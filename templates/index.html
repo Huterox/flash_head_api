@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlashHead Node</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+:root {
+    --bg: #0f1117; --bg-card: #1a1d27; --bg-hover: #242836;
+    --border: #2a2e3a; --text: #e4e6eb; --text-dim: #8b8fa3;
+    --accent: #6c5ce7; --accent-hover: #7d6ff0; --accent-bg: rgba(108,92,231,0.12);
+    --green: #00b894; --green-bg: rgba(0,184,148,0.12);
+    --yellow: #fdcb6e; --yellow-bg: rgba(253,203,110,0.12);
+    --red: #e17055; --red-bg: rgba(225,112,85,0.12);
+    --radius: 12px; --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+.app { display: flex; min-height: 100vh; }
+
+/* 侧边栏 */
+.sidebar { width: 220px; background: var(--bg-card); border-right: 1px solid var(--border); padding: 24px 0; flex-shrink: 0; display: flex; flex-direction: column; }
+.sidebar .logo { padding: 0 20px; margin-bottom: 32px; font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+.sidebar nav a { display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: var(--text-dim); text-decoration: none; font-size: 14px; transition: all 0.15s; cursor: pointer; }
+.sidebar nav a:hover, .sidebar nav a.active { color: var(--text); background: var(--accent-bg); }
+.sidebar nav a.active { border-right: 2px solid var(--accent); }
+.sidebar .ver { margin-top: auto; padding: 12px 20px; font-size: 11px; color: var(--text-dim); }
+
+/* 主区域 */
+.main { flex: 1; padding: 32px; overflow-y: auto; max-height: 100vh; }
+.page-title { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
+
+/* 卡片 */
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+.card-title { font-size: 13px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+
+/* 状态指标 */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.metric { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.metric .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.metric .value { font-size: 22px; font-weight: 700; }
+
+/* 徽章 */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-green::before { background: var(--green); }
+.badge-yellow { background: var(--yellow-bg); color: var(--yellow); }
+.badge-yellow::before { background: var(--yellow); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-red::before { background: var(--red); }
+
+/* 按钮 */
+.btn { padding: 9px 20px; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-ghost:hover { color: var(--text); border-color: var(--text-dim); }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+
+/* 提示 */
+.toast { padding: 10px 16px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 13px; }
+.toast-ok { background: var(--green-bg); color: var(--green); }
+.toast-err { background: var(--red-bg); color: var(--red); }
+
+/* 拖拽上传区 */
+.drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+.drop-zone:hover { border-color: var(--accent); }
+.drop-zone p { margin-top: 10px; font-size: 14px; color: var(--text); }
+.drop-zone span { font-size: 12px; color: var(--text-dim); }
+
+/* Canvas 框选 */
+.canvas-wrap { position: relative; }
+.canvas-wrap canvas { width: 100%; border-radius: var(--radius-sm); cursor: crosshair; display: block; }
+.canvas-toolbar { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 6px; }
+.crop-info { font-size: 11px; color: var(--text-dim); font-family: monospace; }
+
+/* 文件信息 */
+.file-info { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-hover); border-radius: var(--radius-sm); }
+.file-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); border-radius: 8px; }
+.file-detail { flex: 1; font-size: 13px; }
+
+/* 任务列表 */
+.task-list { display: flex; flex-direction: column; gap: 12px; }
+.task-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.task-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.task-id { font-family: monospace; font-size: 14px; font-weight: 600; }
+.task-progress { margin-bottom: 8px; }
+.progress-track { height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; border-radius: 3px; }
+.progress-text { font-size: 11px; color: var(--text-dim); margin-top: 4px; display: block; }
+.task-meta { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.task-actions { display: flex; gap: 8px; }
+
+/* 登录页 */
+.login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); }
+.login-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px; width: 380px; text-align: center; }
+.login-box h1 { font-size: 22px; color: var(--accent); margin-bottom: 8px; }
+.login-box p { font-size: 13px; color: var(--text-dim); margin-bottom: 24px; }
+.login-box input { width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 14px; margin-bottom: 16px; outline: none; }
+.login-box input:focus { border-color: var(--accent); }
+.login-box .err { color: var(--red); font-size: 12px; margin-bottom: 12px; }
+
+/* 视频预览 */
+.video-preview { margin-top: 10px; border-radius: var(--radius-sm); overflow: hidden; background: #000; }
+.video-preview video { width: 100%; max-height: 360px; display: block; }
+.refresh-dot { position:fixed; top:12px; right:12px; width:8px; height:8px; border-radius:50%; background:var(--accent); opacity:0; transition:opacity .2s; z-index:999; }
+.refresh-dot.active { opacity:1; animation:pulse-dot .6s ease-in-out; }
+@keyframes pulse-dot { 0%{transform:scale(1);opacity:1} 50%{transform:scale(1.8);opacity:.6} 100%{transform:scale(1);opacity:0} }
+</style>
+</head>
+<body>
+<div id="app">
+    <!-- 登录页 -->
+    <div class="login-wrap" v-if="!authed">
+        <div class="login-box">
+            <h1>FlashHead</h1>
+            <p>请输入 API Key 以访问节点</p>
+            <input type="password" v-model="inputKey" placeholder="API Key" @keyup.enter="doLogin">
+            <div class="err" v-if="loginErr">{{ loginErr }}</div>
+            <button class="btn btn-primary" style="width:100%;" @click="doLogin">验证</button>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div class="app" v-else>
+    <div :class="['refresh-dot',{active:refreshing}]"></div>
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+        <div class="logo">FlashHead</div>
+        <nav>
+            <a :class="{active: tab==='dashboard'}" @click="tab='dashboard'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                概览
+            </a>
+            <a :class="{active: tab==='create'}" @click="tab='create'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                创建任务
+            </a>
+            <a :class="{active: tab==='tasks'}" @click="tab='tasks'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                任务列表
+            </a>
+        </nav>
+        <div class="ver">FlashHead Node v1.0</div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="main">
+        <!-- 概览 -->
+        <div v-if="tab==='dashboard'">
+            <div class="page-title">节点概览</div>
+            <div class="metrics">
+                <div class="metric">
+                    <div class="label">状态</div>
+                    <div class="value"><span class="badge badge-green" v-if="health.status==='healthy'">在线</span><span class="badge badge-red" v-else>离线</span></div>
+                </div>
+                <div class="metric">
+                    <div class="label">节点</div>
+                    <div class="value" style="font-size:15px;">{{ health.node_name || '-' }}</div>
+                </div>
+                <div class="metric">
+                    <div class="label">队列任务</div>
+                    <div class="value">{{ sched.queue_size ?? 0 }}</div>
+                </div>
+                <div class="metric">
+                    <div class="label">当前任务</div>
+                    <div class="value" style="font-size:13px;">{{ sched.active_task ? sched.active_task.substring(0,12)+'...' : '空闲' }}</div>
+                </div>
+            </div>
+        </div>
+
+<!-- PLACEHOLDER_CREATE_TAB -->
+
+        <!-- 创建任务 -->
+        <div v-if="tab==='create'">
+            <div class="page-title">创建合成任务</div>
+            <div v-if="toast" :class="['toast', toast.ok?'toast-ok':'toast-err']">{{ toast.text }}</div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                <!-- 左：图片上传 + Canvas 框选 -->
+                <div class="card">
+                    <div class="card-title">参考图片</div>
+                    <div class="drop-zone" @click="$refs.imgInput.click()" @dragover.prevent @drop.prevent="onDropImage" v-if="!imagePreview">
+                        <input ref="imgInput" type="file" accept=".png,.jpg,.jpeg" @change="onSelectImage" style="display:none">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <p>点击或拖拽上传图片</p>
+                        <span>支持 PNG / JPG</span>
+                    </div>
+                    <div v-else class="canvas-wrap">
+                        <canvas ref="cropCanvas"
+                            @mousedown="onCropStart" @mousemove="onCropMove" @mouseup="onCropEnd" @mouseleave="onCropEnd"
+                        ></canvas>
+                        <div class="canvas-toolbar">
+                            <span class="crop-info" v-if="cropRect">裁剪: {{ cropRect.x }},{{ cropRect.y }} → {{ cropRect.x+cropRect.w }},{{ cropRect.y+cropRect.h }} ({{ cropRect.w }}x{{ cropRect.h }})</span>
+                            <span class="crop-info" v-else>在图片上拖拽框选裁剪区域（可选）</span>
+                            <div style="display:flex;gap:6px;">
+                                <button class="btn btn-ghost btn-sm" @click="clearCrop">清除框选</button>
+                                <button class="btn btn-ghost btn-sm" @click="removeImage">换图</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右：音频 + 提交 -->
+                <div>
+                    <div class="card">
+                        <div class="card-title">音频文件</div>
+                        <div class="drop-zone" @click="$refs.audioInput.click()" @dragover.prevent @drop.prevent="onDropAudio" v-if="!audioFile">
+                            <input ref="audioInput" type="file" accept=".wav,.mp3,.m4a" @change="onSelectAudio" style="display:none">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                            <p>点击或拖拽上传音频</p>
+                            <span>支持 WAV / MP3 / M4A</span>
+                        </div>
+                        <div v-else class="file-info">
+                            <div class="file-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                            </div>
+                            <div class="file-detail">
+                                <div>{{ audioFile.filename }}</div>
+                                <div style="font-size:11px;color:var(--text-dim);">{{ (audioFile.file_size/1024).toFixed(1) }} KB</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" @click="audioFile=null;audioFileId=null">移除</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">提交</div>
+                        <div style="margin-bottom:12px;font-size:13px;color:var(--text-dim);">
+                            图片: <span :style="{color: imageFileId ? 'var(--green)' : 'var(--red)'}">{{ imageFileId ? '已上传' : '未上传' }}</span>
+                            &nbsp;|&nbsp;
+                            音频: <span :style="{color: audioFileId ? 'var(--green)' : 'var(--red)'}">{{ audioFileId ? '已上传' : '未上传' }}</span>
+                            <span v-if="cropRect">&nbsp;|&nbsp; 已框选区域</span>
+                        </div>
+                        <button class="btn btn-primary" style="width:100%;" @click="createTask" :disabled="!imageFileId || !audioFileId || submitting">
+                            {{ submitting ? '提交中...' : '提交合成任务' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PLACEHOLDER_TASKS_TAB -->
+
+        <!-- 任务列表 -->
+        <div v-if="tab==='tasks'">
+            <div class="page-title">任务列表</div>
+
+            <!-- 筛选栏 -->
+            <div class="card" style="padding:12px 20px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:13px;color:var(--text-dim);">状态:</span>
+                    <button v-for="f in filterOptions" :key="f.value" class="btn btn-sm"
+                        :class="filterStatus===f.value ? 'btn-primary' : 'btn-ghost'"
+                        @click="filterStatus=f.value; taskPage=1; loadTasks();">{{ f.label }}</button>
+                    <div style="flex:1;"></div>
+                    <input v-model="searchKeyword" placeholder="搜索 Task ID..." @keyup.enter="taskPage=1; loadTasks();"
+                        style="padding:5px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;width:220px;outline:none;">
+                    <button class="btn btn-ghost btn-sm" @click="taskPage=1; loadTasks();">搜索</button>
+                    <span style="font-size:12px;color:var(--text-dim);">共 {{ taskTotal }} 条</span>
+                </div>
+            </div>
+
+            <div class="card" v-if="!tasks.length">
+                <div style="text-align:center;padding:40px 0;color:var(--text-dim);">暂无任务</div>
+            </div>
+            <div class="task-list" v-else>
+                <div class="task-item" v-for="t in tasks" :key="t.task_id">
+                    <div class="task-header">
+                        <span class="task-id">{{ t.task_id.substring(0,8) }}</span>
+                        <span class="badge" :class="statusBadge(t.status)">{{ statusText(t.status) }}</span>
+                    </div>
+                    <div class="task-progress" v-if="t.progress && t.status==='running'">
+                        <div class="progress-track"><div class="progress-fill" :style="{width:(t.progress.percent||0)+'%'}"></div></div>
+                        <span class="progress-text">{{ t.progress.percent||0 }}% ({{ t.progress.chunk||0 }}/{{ t.progress.total||0 }})</span>
+                    </div>
+                    <div class="task-meta">
+                        <span v-if="t.created_at">{{ formatTime(t.created_at) }}</span>
+                        <span v-if="t.error_message" style="color:var(--red);margin-left:8px;">{{ t.error_message }}</span>
+                    </div>
+                    <div class="task-actions">
+                        <button class="btn btn-ghost btn-sm" @click="refreshTask(t.task_id)">刷新</button>
+                        <button class="btn btn-primary btn-sm" v-if="t.status==='failed'" @click="retryTask(t.task_id)">重试</button>
+                        <button class="btn btn-primary btn-sm" v-if="t.status==='completed'" @click="previewTask(t.task_id)">{{ previewId===t.task_id ? '收起' : '预览' }}</button>
+                        <button class="btn btn-ghost btn-sm" v-if="t.status==='completed'" @click="downloadTask(t.task_id)">下载</button>
+                        <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);" v-if="t.status!=='running'" @click="deleteTask(t.task_id)">删除</button>
+                    </div>
+                    <div class="video-preview" v-if="t.status==='completed' && previewId===t.task_id">
+                        <video controls autoplay :src="getPreviewUrl(t.task_id)"></video>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分页 -->
+            <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;" v-if="taskTotalPages > 1">
+                <button class="btn btn-ghost btn-sm" :disabled="taskPage<=1" @click="taskPage--;loadTasks();">上一页</button>
+                <span style="font-size:13px;color:var(--text-dim);">{{ taskPage }} / {{ taskTotalPages }}</span>
+                <button class="btn btn-ghost btn-sm" :disabled="taskPage>=taskTotalPages" @click="taskPage++;loadTasks();">下一页</button>
+            </div>
+        </div>
+    </main>
+</div><!-- .app -->
+</div><!-- #app -->
+
+<script>
+let apiKey = sessionStorage.getItem('fh_api_key') || '';
+function getHeaders() { return { 'X-API-Key': apiKey }; }
+
+async function api(method, url, body) {
+    const opts = { method, headers: { ...getHeaders() } };
+    if (body instanceof FormData) opts.body = body;
+    else if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    return (await fetch(url, opts)).json();
+}
+
+const { createApp, ref, reactive, onMounted, nextTick, watch } = Vue;
+
+createApp({
+    setup() {
+        const tab = ref('dashboard');
+        const health = ref({});
+        const sched = ref({});
+        const toast = ref(null);
+        const tasks = ref([]);
+        const submitting = ref(false);
+        const previewId = ref(null);
+        const refreshing = ref(false);
+
+        // 任务列表分页 + 筛选
+        const filterStatus = ref('');
+        const searchKeyword = ref('');
+        const taskPage = ref(1);
+        const taskTotal = ref(0);
+        const taskPageSize = 15;
+        const taskTotalPages = ref(1);
+        const filterOptions = [
+            { label: '全部', value: '' },
+            { label: '排队中', value: 'pending' },
+            { label: '推理中', value: 'running' },
+            { label: '已完成', value: 'completed' },
+            { label: '失败', value: 'failed' },
+        ];
+
+        async function loadTasks() {
+            let url = `/api/tasks/list?page=${taskPage.value}&page_size=${taskPageSize}`;
+            if (filterStatus.value) url += `&status=${filterStatus.value}`;
+            if (searchKeyword.value.trim()) url += `&keyword=${encodeURIComponent(searchKeyword.value.trim())}`;
+            const r = await api('GET', url);
+            if (r.code === 200) {
+                tasks.value = r.data.items;
+                taskTotal.value = r.data.total;
+                taskTotalPages.value = Math.max(1, Math.ceil(r.data.total / taskPageSize));
+            }
+        }
+
+        // 登录
+        const authed = ref(!!sessionStorage.getItem('fh_api_key'));
+        const inputKey = ref('');
+        const loginErr = ref('');
+
+        async function doLogin() {
+            loginErr.value = '';
+            apiKey = inputKey.value;
+            try {
+                const r = await api('GET', '/api/system/health');
+                if (r.code === 200) {
+                    sessionStorage.setItem('fh_api_key', apiKey);
+                    authed.value = true;
+                    fetchStatus();
+                    loadTasks();
+                } else {
+                    loginErr.value = r.msg || '验证失败';
+                    apiKey = '';
+                }
+            } catch(e) {
+                loginErr.value = '连接失败';
+                apiKey = '';
+            }
+        }
+
+        // 图片相关
+        const imagePreview = ref(null);  // base64
+        const imageFileId = ref(null);
+        const imageNatW = ref(0);
+        const imageNatH = ref(0);
+        const audioFile = ref(null);
+        const audioFileId = ref(null);
+
+        // Canvas 框选
+        const cropCanvas = ref(null);
+        const cropRect = ref(null);  // {x,y,w,h} 原图坐标
+        let drawing = false, startX = 0, startY = 0, canvasScale = 1;
+
+        async function fetchStatus() {
+            try {
+                const h = await api('GET', '/api/system/health');
+                if (h.code === 200) health.value = h.data;
+                const s = await api('GET', '/api/system/scheduler');
+                if (s.code === 200) sched.value = s.data;
+            } catch(e) {}
+        }
+
+        function showToast(ok, text) { toast.value = { ok, text }; setTimeout(() => toast.value = null, 4000); }
+
+        // 图片上传 + 预览
+        async function handleImageFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                imagePreview.value = e.target.result;
+                const img = new Image();
+                img.onload = () => {
+                    imageNatW.value = img.naturalWidth;
+                    imageNatH.value = img.naturalHeight;
+                    nextTick(() => drawCanvas());
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            // 上传
+            const fd = new FormData(); fd.append('file', file);
+            const r = await api('POST', '/api/files/upload', fd);
+            if (r.code === 200) { imageFileId.value = r.data.file_id; showToast(true, '图片上传成功'); }
+            else showToast(false, r.msg);
+        }
+        function onSelectImage(e) { handleImageFile(e.target.files[0]); }
+        function onDropImage(e) { handleImageFile(e.dataTransfer.files[0]); }
+        function removeImage() { imagePreview.value = null; imageFileId.value = null; cropRect.value = null; }
+
+        // Canvas 绘制
+        function drawCanvas(rect) {
+            const cvs = cropCanvas.value;
+            if (!cvs || !imagePreview.value) return;
+            const ctx = cvs.getContext('2d');
+            const img = new Image();
+            img.onload = () => {
+                const maxW = cvs.parentElement.clientWidth;
+                canvasScale = maxW / img.naturalWidth;
+                cvs.width = maxW;
+                cvs.height = img.naturalHeight * canvasScale;
+                ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+                const r = rect || cropRect.value;
+                if (r) {
+                    // 暗化外部
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.fillRect(0, 0, cvs.width, cvs.height);
+                    // 还原选区
+                    const sx = r.x * canvasScale, sy = r.y * canvasScale;
+                    const sw = r.w * canvasScale, sh = r.h * canvasScale;
+                    ctx.drawImage(img, r.x, r.y, r.w, r.h, sx, sy, sw, sh);
+                    // 边框
+                    ctx.strokeStyle = '#6c5ce7'; ctx.lineWidth = 2; ctx.setLineDash([6,3]);
+                    ctx.strokeRect(sx, sy, sw, sh);
+                    ctx.setLineDash([]);
+                    // 角标
+                    const cs = 8;
+                    ctx.fillStyle = '#6c5ce7';
+                    [[sx,sy],[sx+sw,sy],[sx,sy+sh],[sx+sw,sy+sh]].forEach(([cx,cy]) => {
+                        ctx.fillRect(cx-cs/2, cy-cs/2, cs, cs);
+                    });
+                }
+            };
+            img.src = imagePreview.value;
+        }
+
+        function onCropStart(e) {
+            drawing = true;
+            const rect = cropCanvas.value.getBoundingClientRect();
+            startX = (e.clientX - rect.left) / canvasScale;
+            startY = (e.clientY - rect.top) / canvasScale;
+        }
+        function onCropMove(e) {
+            if (!drawing) return;
+            const rect = cropCanvas.value.getBoundingClientRect();
+            const curX = (e.clientX - rect.left) / canvasScale;
+            const curY = (e.clientY - rect.top) / canvasScale;
+            const x = Math.max(0, Math.min(startX, curX));
+            const y = Math.max(0, Math.min(startY, curY));
+            const w = Math.min(Math.abs(curX - startX), imageNatW.value - x);
+            const h = Math.min(Math.abs(curY - startY), imageNatH.value - y);
+            const r = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+            cropRect.value = r;
+            drawCanvas(r);
+        }
+        function onCropEnd() { drawing = false; }
+        function clearCrop() { cropRect.value = null; drawCanvas(); }
+
+        // 音频上传
+        async function handleAudioFile(file) {
+            if (!file) return;
+            const fd = new FormData(); fd.append('file', file);
+            const r = await api('POST', '/api/files/upload', fd);
+            if (r.code === 200) {
+                audioFile.value = r.data; audioFileId.value = r.data.file_id;
+                showToast(true, '音频上传成功');
+            } else showToast(false, r.msg);
+        }
+        function onSelectAudio(e) { handleAudioFile(e.target.files[0]); }
+        function onDropAudio(e) { handleAudioFile(e.dataTransfer.files[0]); }
+
+        // 创建任务
+        async function createTask() {
+            submitting.value = true;
+            const body = { image_file_id: imageFileId.value, audio_file_id: audioFileId.value };
+            if (cropRect.value && cropRect.value.w > 10 && cropRect.value.h > 10) {
+                const r = cropRect.value;
+                body.crop_region = [r.x, r.y, r.x + r.w, r.y + r.h];
+            }
+            const res = await api('POST', '/api/tasks/synthesize', body);
+            submitting.value = false;
+            if (res.code === 200) {
+                showToast(true, '任务已创建');
+                tab.value = 'tasks';
+                filterStatus.value = '';
+                taskPage.value = 1;
+                await loadTasks();
+                pollTask(res.data.task_id);
+            } else showToast(false, res.msg);
+        }
+
+        // 任务操作
+        async function refreshTask(taskId) {
+            const r = await api('GET', `/api/tasks/${taskId}`);
+            if (r.code === 200) {
+                const idx = tasks.value.findIndex(t => t.task_id === taskId);
+                if (idx >= 0) tasks.value[idx] = r.data;
+            }
+        }
+        async function deleteTask(taskId) {
+            if (!confirm('确认删除该任务？删除后不可恢复。')) return;
+            const r = await api('DELETE', `/api/tasks/${taskId}`);
+            if (r.code === 200) {
+                showToast(true, '任务已删除');
+                await loadTasks();
+                fetchStatus();
+            } else showToast(false, r.msg);
+        }
+        async function retryTask(taskId) {
+            const r = await api('POST', `/api/tasks/${taskId}/retry`);
+            if (r.code === 200) {
+                showToast(true, '任务已重新入队');
+                await loadTasks();
+                fetchStatus();
+                pollTask(taskId);
+            } else showToast(false, r.msg);
+        }
+        function pollTask(taskId) {
+            const iv = setInterval(async () => {
+                const r = await api('GET', `/api/tasks/${taskId}`);
+                if (r.code === 200) {
+                    const idx = tasks.value.findIndex(t => t.task_id === taskId);
+                    if (idx >= 0) tasks.value[idx] = r.data;
+                    if (['completed','failed','cancelled'].includes(r.data.status)) {
+                        clearInterval(iv);
+                        fetchStatus();
+                        loadTasks();
+                    }
+                }
+            }, 3000);
+        }
+        function downloadTask(taskId) { window.open(`/api/tasks/${taskId}/download?key=${encodeURIComponent(apiKey)}`, '_blank'); }
+        function previewTask(taskId) { previewId.value = previewId.value === taskId ? null : taskId; }
+        function getPreviewUrl(taskId) { return `/api/tasks/${taskId}/preview?key=${encodeURIComponent(apiKey)}`; }
+        function statusBadge(s) { return { completed:'badge-green', running:'badge-yellow', pending:'badge-yellow', failed:'badge-red', cancelled:'badge-red' }[s] || 'badge-yellow'; }
+        function statusText(s) { return { pending:'排队中', running:'推理中', completed:'已完成', failed:'失败', cancelled:'已取消' }[s] || s; }
+        function formatTime(t) { try { return new Date(t).toLocaleString('zh-CN'); } catch(e) { return t; } }
+
+        onMounted(() => {
+            fetchStatus();
+            setInterval(async () => { refreshing.value=true; await fetchStatus(); if (tab.value === 'tasks') await loadTasks(); setTimeout(()=>refreshing.value=false,600); }, 3000);
+            if (authed.value) loadTasks();
+        });
+
+        watch(tab, (v) => { if (v === 'tasks') loadTasks(); });
+
+        return {
+            tab, health, sched, toast, tasks, submitting, previewId, refreshing,
+            authed, inputKey, loginErr, doLogin,
+            filterStatus, searchKeyword, filterOptions, taskPage, taskTotal, taskTotalPages, loadTasks,
+            imagePreview, imageFileId, imageNatW, imageNatH, audioFile, audioFileId,
+            cropCanvas, cropRect,
+            onSelectImage, onDropImage, removeImage,
+            onCropStart, onCropMove, onCropEnd, clearCrop, drawCanvas,
+            onSelectAudio, onDropAudio,
+            createTask, refreshTask, deleteTask, retryTask, downloadTask, previewTask, getPreviewUrl,
+            statusBadge, statusText, formatTime,
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>

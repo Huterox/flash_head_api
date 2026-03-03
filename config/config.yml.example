@@ -1,0 +1,52 @@
+node:
+  id: "node_flashhead_01"
+  name: "FlashHead节点"
+
+database:
+  host: ""
+  port: 5432
+  database: ""
+  user: ""
+  password: ""
+
+redis:
+  host: ""
+  port: 6378
+  password: ""
+  db: 0
+
+flashhead:
+  mode: lite                    # lite: 单卡蒸馏模型(steps=4) | pro: 双卡预训练模型(steps=20, 需要 torchrun 启动)
+  ckpt_dir: "/checkpoint/SoulX-FlashHead-1_3B"
+  wav2vec_dir: "/checkpoint/wav2vec2-base-960h"
+  face_ratio: 2.0
+  torch_compile: false            # 是否启用 torch.compile（双卡 pro 模式建议关闭）
+  pro_device_ids: "0,1"         # pro 模式使用的两张 GPU（xfuser sequence parallel）
+
+server:
+  host: "0.0.0.0"
+  port: 8100
+  api_key: "node_dev"
+  thread_pool:
+    max_workers: 1
+    queue_size: 200
+  file_upload:
+    upload_dir: "/cache/uploads"
+    max_file_size: 100
+    allowed_extensions: [".png", ".jpg", ".jpeg", ".wav", ".mp3", ".m4a"]
+    retain_hours: 720
+    cleanup_interval: 3600
+
+device_ids: "0"
+ffmpeg_path: "/libs/ffmpeg.exe"
+cache_dir: "/cache"
+out_dir: "/cache/out"
+
+gateway:
+  enabled: false
+  url: "http://127.0.0.1:8200"
+  api_key: ""
+  node_id: ""
+  node_name: ""
+  node_url: ""
+  heartbeat_interval: 30

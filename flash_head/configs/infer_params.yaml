@@ -1,0 +1,10 @@
+cached_audio_duration: 8
+color_correction_strength: 1.0
+frame_num: 33
+height: 512
+motion_frames_latent_num: 2
+num_heads: 12
+sample_rate: 16000
+sample_shift: 5
+tgt_fps: 25
+width: 512

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlashHead Gateway</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+:root {
+  --bg: #0f1117; --bg2: #1a1d27; --bg3: #242836; --border: #2e3348;
+  --text: #e1e4ed; --text2: #8b8fa3;
+  --primary: #7c5cfc; --primary-hover: #6a4be0;
+  --green: #34d399; --red: #f87171; --yellow: #fbbf24;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+.login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+.login-box { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:48px 40px; width:380px; text-align:center; }
+.login-box h2 { font-size:24px; margin-bottom:4px; }
+.login-sub { color:var(--text2); margin-bottom:24px; font-size:14px; }
+.input { width:100%; padding:10px 14px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; outline:none; margin-bottom:16px; }
+.input:focus { border-color:var(--primary); }
+.btn { padding:8px 16px; border:1px solid var(--border); border-radius:8px; background:var(--bg3); color:var(--text); cursor:pointer; font-size:13px; transition:all .15s; }
+.btn:hover { background:var(--border); }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.btn-primary { background:var(--primary); border-color:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-hover); }
+.btn-danger { background:var(--red); border-color:var(--red); color:#fff; }
+.btn-block { width:100%; padding:12px; font-size:15px; }
+.btn-sm { padding:5px 12px; font-size:12px; }
+.err-msg { color:var(--red); font-size:13px; margin-top:12px; }
+.select { padding:8px 12px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; outline:none; }
+.layout { display:flex; min-height:100vh; }
+.sidebar { width:200px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; }
+.logo { padding:20px 16px; font-size:16px; font-weight:700; color:var(--primary); border-bottom:1px solid var(--border); }
+.sidebar nav { flex:1; padding:8px 0; }
+.nav-item { padding:10px 16px; cursor:pointer; font-size:13px; color:var(--text2); display:flex; align-items:center; gap:8px; transition:all .15s; }
+.nav-item:hover { color:var(--text); background:var(--bg3); }
+.nav-item.active { color:var(--primary); background:rgba(124,92,252,.08); border-right:2px solid var(--primary); }
+.sidebar-bottom { padding:16px; font-size:13px; color:var(--text2); cursor:pointer; border-top:1px solid var(--border); }
+.sidebar-bottom:hover { color:var(--red); }
+.main { margin-left:200px; flex:1; padding:24px 32px; }
+.page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.page-header h2 { font-size:20px; }
+.stats-row { display:flex; gap:16px; margin-top:16px; }
+.stat-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:20px 24px; flex:1; }
+.stat-val { font-size:32px; font-weight:700; }
+.stat-val.green { color:var(--green); } .stat-val.red { color:var(--red); }
+.stat-label { color:var(--text2); font-size:13px; margin-top:4px; }
+.node-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+.node-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px; }
+.node-card.healthy { border-left:3px solid var(--green); }
+.node-card.unhealthy { border-left:3px solid var(--red); }
+.node-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.node-dot { width:8px; height:8px; border-radius:50%; }
+.node-dot.healthy { background:var(--green); } .node-dot.unhealthy { background:var(--red); }
+.node-name { font-weight:600; font-size:14px; }
+.node-info { color:var(--text2); font-size:12px; margin-top:4px; }
+.table { width:100%; border-collapse:collapse; }
+.table th,.table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); font-size:13px; }
+.table th { color:var(--text2); font-weight:500; background:var(--bg2); }
+.badge { padding:3px 10px; border-radius:12px; font-size:11px; font-weight:500; }
+.badge.healthy { background:rgba(52,211,153,.15); color:var(--green); }
+.badge.unhealthy { background:rgba(248,113,113,.15); color:var(--red); }
+.badge.pending { background:rgba(251,191,36,.15); color:var(--yellow); }
+.badge.running { background:rgba(124,92,252,.15); color:var(--primary); }
+.badge.completed { background:rgba(52,211,153,.15); color:var(--green); }
+.badge.failed { background:rgba(248,113,113,.15); color:var(--red); }
+.filter-row { display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+.status-tabs { display:flex; gap:4px; }
+.status-tab { padding:5px 14px; border-radius:16px; font-size:12px; cursor:pointer; background:var(--bg3); color:var(--text2); transition:all .15s; }
+.status-tab:hover { color:var(--text); } .status-tab.active { background:var(--primary); color:#fff; }
+.task-list { display:grid; gap:10px; }
+.task-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+.task-top { display:flex; justify-content:space-between; align-items:center; }
+.task-id { font-family:monospace; font-size:13px; color:var(--text2); }
+.task-meta { display:flex; justify-content:space-between; color:var(--text2); font-size:12px; margin-top:6px; }
+.task-err { color:var(--red); font-size:12px; margin-top:6px; }
+.task-actions { display:flex; gap:8px; margin-top:10px; }
+.pagination { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:16px; }
+.page-info { color:var(--text2); font-size:13px; }
+.empty { color:var(--text2); text-align:center; padding:40px; font-size:14px; }
+.exp-row { display:flex; gap:16px; margin:16px 0; }
+.exp-panel { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px; flex:1; }
+.exp-panel h4 { font-size:14px; margin-bottom:12px; }
+.upload-zone { border:2px dashed var(--border); border-radius:8px; padding:24px; text-align:center; cursor:pointer; color:var(--text2); font-size:13px; }
+.upload-zone:hover { border-color:var(--primary); }
+.upload-zone.done { border-color:var(--green); color:var(--green); }
+.upload-zone svg { display:block; margin:0 auto 8px; }
+.upload-zone p { margin-top:8px; font-size:14px; color:var(--text); }
+.upload-zone span { font-size:12px; color:var(--text2); }
+.canvas-wrap { position:relative; }
+.canvas-wrap canvas { width:100%; border-radius:8px; cursor:crosshair; display:block; }
+.canvas-toolbar { display:flex; justify-content:space-between; align-items:center; margin-top:8px; flex-wrap:wrap; gap:6px; }
+.crop-info { font-size:11px; color:var(--text2); font-family:monospace; }
+.file-info { display:flex; align-items:center; gap:12px; padding:12px; background:var(--bg3); border-radius:8px; }
+.file-icon { width:40px; height:40px; display:flex; align-items:center; justify-content:center; background:rgba(124,92,252,.12); border-radius:8px; }
+.file-detail { flex:1; font-size:13px; }
+.toast { padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:13px; }
+.toast-ok { background:rgba(52,211,153,.12); color:var(--green); }
+.toast-err { background:rgba(248,113,113,.12); color:var(--red); }
+.exp-result { margin-top:16px; background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px; }
+.video-preview { margin-top:10px; border-radius:8px; overflow:hidden; background:#000; }
+.video-preview video { width:100%; max-height:360px; display:block; }
+.page-btn { padding:6px 12px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; color:var(--text2); font-size:12px; cursor:pointer; transition:all .15s; }
+.page-btn:hover:not(:disabled) { background:var(--border); color:var(--text); }
+.page-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.page-btn:disabled { opacity:.3; cursor:not-allowed; }
+.modal-mask { position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.6); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; }
+.modal-box { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:28px; width:460px; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+.modal-box h3 { font-size:17px; font-weight:600; margin-bottom:20px; }
+.form-group { margin-bottom:14px; }
+.form-group label { display:block; font-size:12px; color:var(--text2); margin-bottom:6px; font-weight:500; }
+.form-group input { width:100%; }
+.modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+.btn-ghost { background:transparent; border:1px solid var(--border); color:var(--text2); }
+.btn-ghost:hover { color:var(--text); background:var(--bg3); }
+.refresh-dot { position:fixed; top:12px; right:12px; width:8px; height:8px; border-radius:50%; background:var(--primary); opacity:0; transition:opacity .2s; z-index:999; }
+.refresh-dot.active { opacity:1; animation:pulse-dot .6s ease-in-out; }
+@keyframes pulse-dot { 0%{transform:scale(1);opacity:1} 50%{transform:scale(1.8);opacity:.6} 100%{transform:scale(1);opacity:0} }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 登录 -->
+  <div v-if="!token" class="login-wrap">
+    <div class="login-box">
+      <h2>FlashHead Gateway</h2>
+      <p class="login-sub">网关管理面板</p>
+      <input v-model="username" type="text" placeholder="用户名" class="input">
+      <input v-model="password" type="password" placeholder="密码" @keyup.enter="doLogin" class="input">
+      <button @click="doLogin" class="btn btn-primary btn-block">登 录</button>
+      <p v-if="loginErr" class="err-msg">{{ loginErr }}</p>
+    </div>
+  </div>
+  <!-- 主界面 -->
+  <div v-else class="layout">
+    <div :class="['refresh-dot',{active:refreshing}]"></div>
+    <aside class="sidebar">
+      <div class="logo">FlashHead GW</div>
+      <nav>
+        <div v-for="t in tabs" :key="t.key" :class="['nav-item',{active:tab===t.key}]" @click="tab=t.key">{{ t.label }}</div>
+      </nav>
+      <div class="sidebar-bottom" @click="logout">退出登录</div>
+    </aside>
+    <main class="main">
+      <!-- 概览 -->
+      <section v-if="tab==='overview'" class="page">
+        <h2>集群概览</h2>
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-val">{{ clusterStats.total_nodes }}</div><div class="stat-label">注册节点</div></div>
+          <div class="stat-card"><div class="stat-val green">{{ clusterStats.healthy_nodes }}</div><div class="stat-label">健康节点</div></div>
+          <div class="stat-card"><div class="stat-val" style="color:var(--primary)">{{ clusterStats.active_nodes }}</div><div class="stat-label">工作中节点</div></div>
+          <div class="stat-card"><div class="stat-val" style="color:var(--yellow)">{{ clusterStats.total_queue }}</div><div class="stat-label">队列任务</div></div>
+        </div>
+        <div class="stats-row" style="margin-top:12px">
+          <div class="stat-card"><div class="stat-val">{{ clusterStats.total }}</div><div class="stat-label">任务总数</div></div>
+          <div class="stat-card"><div class="stat-val" style="color:var(--yellow)">{{ clusterStats.pending }}</div><div class="stat-label">排队中</div></div>
+          <div class="stat-card"><div class="stat-val" style="color:var(--primary)">{{ clusterStats.running }}</div><div class="stat-label">推理中</div></div>
+          <div class="stat-card"><div class="stat-val green">{{ clusterStats.completed }}</div><div class="stat-label">已完成</div></div>
+          <div class="stat-card"><div class="stat-val red">{{ clusterStats.failed }}</div><div class="stat-label">失败</div></div>
+        </div>
+        <h3 style="margin:24px 0 12px">节点状态</h3>
+        <table class="table" v-if="nodes.length">
+          <thead><tr><th>节点ID</th><th>名称</th><th>地址</th><th>状态</th><th>队列</th><th>当前任务</th><th>心跳</th></tr></thead>
+          <tbody><tr v-for="n in pagedNodes" :key="n.id">
+            <td style="font-family:monospace;font-size:12px">{{ n.id }}</td>
+            <td>{{ n.name }}</td><td>{{ n.url }}</td>
+            <td><span :class="['badge',n.status]">{{ n.status }}</span></td>
+            <td>{{ n.queue_size ?? 0 }}</td>
+            <td style="font-family:monospace;font-size:12px">{{ n.active_task ? n.active_task.slice(0,12)+'...' : '空闲' }}</td>
+            <td>{{ fmtTime(n.last_health_check) }}</td>
+          </tr></tbody>
+        </table>
+        <div class="pagination" v-if="nodeTotalPages>1">
+          <button class="page-btn" @click="np=1" :disabled="np===1">&laquo;</button>
+          <button class="page-btn" @click="np--" :disabled="np<=1">&lsaquo;</button>
+          <button class="page-btn" v-for="p in nodePageRange" :key="p" :class="{active:p===np}" @click="np=p">{{ p }}</button>
+          <span class="page-info">{{ np }}/{{ nodeTotalPages }}</span>
+          <button class="page-btn" @click="np++" :disabled="np>=nodeTotalPages">&rsaquo;</button>
+          <button class="page-btn" @click="np=nodeTotalPages" :disabled="np===nodeTotalPages">&raquo;</button>
+        </div>
+        <div v-if="!nodes.length" class="empty">暂无注册节点</div>
+      </section>
+      <!-- 节点管理 -->
+      <section v-if="tab==='nodes'" class="page">
+        <div class="page-header"><h2>节点管理</h2><div style="display:flex;gap:8px"><button @click="showAddNode=true" class="btn btn-sm btn-primary">+ 添加节点</button><button @click="loadNodes" class="btn btn-sm">刷新</button></div></div>
+        <!-- 添加节点弹窗 -->
+        <div class="modal-mask" v-if="showAddNode" @click.self="showAddNode=false">
+          <div class="modal-box">
+            <h3>添加节点</h3>
+            <div class="form-group"><label>节点 ID</label><input v-model="addNode.id" class="input" placeholder="node-1"></div>
+            <div class="form-group"><label>名称</label><input v-model="addNode.name" class="input" placeholder="FlashHead节点"></div>
+            <div class="form-group"><label>地址</label><input v-model="addNode.url" class="input" placeholder="http://192.168.1.100:8100"></div>
+            <div class="form-group"><label>API Key</label><input v-model="addNode.api_key" class="input" placeholder="留空则不认证"></div>
+            <p v-if="addNodeErr" class="err-msg">{{ addNodeErr }}</p>
+            <div class="modal-actions">
+              <button class="btn btn-ghost" @click="showAddNode=false">取消</button>
+              <button class="btn btn-primary" @click="doAddNode">添加</button>
+            </div>
+          </div>
+        </div>
+        <table class="table" v-if="nodes.length">
+          <thead><tr><th>节点ID</th><th>名称</th><th>地址</th><th>状态</th><th>队列</th><th>当前任务</th><th>失败次数</th><th>最后心跳</th><th>操作</th></tr></thead>
+          <tbody><tr v-for="n in pagedNodes" :key="n.id">
+            <td style="font-family:monospace;font-size:12px">{{ n.id }}</td>
+            <td>{{ n.name }}</td><td>{{ n.url }}</td>
+            <td><span :class="['badge',n.status]">{{ n.status }}</span></td>
+            <td>{{ n.queue_size ?? 0 }}</td>
+            <td style="font-family:monospace;font-size:12px">{{ n.active_task ? n.active_task.slice(0,12)+'...' : '空闲' }}</td>
+            <td>{{ n.fail_count }}</td><td>{{ fmtTime(n.last_health_check) }}</td>
+            <td><button @click="removeNode(n.id)" class="btn btn-sm btn-danger">移除</button></td>
+          </tr></tbody>
+        </table>
+        <div class="pagination" v-if="nodeTotalPages>1">
+          <button class="page-btn" @click="np=1" :disabled="np===1">&laquo;</button>
+          <button class="page-btn" @click="np--" :disabled="np<=1">&lsaquo;</button>
+          <button class="page-btn" v-for="p in nodePageRange" :key="p" :class="{active:p===np}" @click="np=p">{{ p }}</button>
+          <span class="page-info">{{ np }}/{{ nodeTotalPages }}</span>
+          <button class="page-btn" @click="np++" :disabled="np>=nodeTotalPages">&rsaquo;</button>
+          <button class="page-btn" @click="np=nodeTotalPages" :disabled="np===nodeTotalPages">&raquo;</button>
+        </div>
+        <div v-else class="empty">暂无注册节点</div>
+      </section>
+      <!-- 任务中心 -->
+      <section v-if="tab==='tasks'" class="page">
+        <div class="page-header"><h2>任务中心</h2><button @click="loadTasks" class="btn btn-sm">刷新</button></div>
+        <div class="filter-row">
+          <select v-model="tf.node_id" @change="tf.page=1;loadTasks()" class="select">
+            <option value="">全部节点</option>
+            <option v-for="n in nodes" :key="n.id" :value="n.id">{{ n.name }}</option>
+          </select>
+          <div class="status-tabs">
+            <span v-for="s in statusOpts" :key="s.v" :class="['status-tab',{active:tf.status===s.v}]" @click="tf.status=s.v;tf.page=1;loadTasks()">{{ s.l }}</span>
+          </div>
+        </div>
+        <div class="task-list">
+          <div v-for="t in tasks" :key="t.task_id" class="task-card">
+            <div class="task-top"><span class="task-id">{{ t.task_id.slice(0,8) }}...</span><span :class="['badge',sCls(t.status)]">{{ sLbl(t.status) }}</span></div>
+            <div class="task-meta"><span>节点: {{ t.node_name }}</span><span>{{ fmtTime(t.created_at) }}</span></div>
+            <div v-if="t.error_message" class="task-err">{{ t.error_message }}</div>
+            <div v-if="t.status==='completed'" class="task-actions">
+              <button @click="togglePv(t)" class="btn btn-sm btn-primary">{{ pvId===t.task_id?'收起':'预览' }}</button>
+              <button @click="dlTask(t)" class="btn btn-sm">下载</button>
+            </div>
+            <div class="video-preview" v-if="pvId===t.task_id"><video :src="pvUrl" controls autoplay></video></div>
+          </div>
+          <div v-if="!tasks.length" class="empty">暂无任务</div>
+        </div>
+        <div v-if="taskTotal>tf.ps" class="pagination">
+          <button class="page-btn" @click="tf.page=1;loadTasks()" :disabled="tf.page<=1">&laquo;</button>
+          <button class="page-btn" @click="tf.page--;loadTasks()" :disabled="tf.page<=1">&lsaquo;</button>
+          <button class="page-btn" v-for="p in taskPageRange" :key="p" :class="{active:p===tf.page}" @click="tf.page=p;loadTasks()">{{ p }}</button>
+          <span class="page-info">{{ tf.page }}/{{ Math.ceil(taskTotal/tf.ps) }}</span>
+          <button class="page-btn" @click="tf.page++;loadTasks()" :disabled="tf.page>=Math.ceil(taskTotal/tf.ps)">&rsaquo;</button>
+          <button class="page-btn" @click="tf.page=Math.ceil(taskTotal/tf.ps);loadTasks()" :disabled="tf.page>=Math.ceil(taskTotal/tf.ps)">&raquo;</button>
+        </div>
+      </section>
+      <!-- 体验中心 -->
+      <section v-if="tab==='experience'" class="page">
+        <h2>体验中心</h2>
+        <div v-if="expToast" :class="['toast',expToast.ok?'toast-ok':'toast-err']">{{ expToast.text }}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <!-- 左：图片上传 + Canvas 框选 -->
+          <div class="exp-panel">
+            <h4>参考图片</h4>
+            <div class="upload-zone" @click="$refs.expImgIn.click()" @dragover.prevent @drop.prevent="expDropImg" v-if="!expImgPreview">
+              <input ref="expImgIn" type="file" accept=".png,.jpg,.jpeg" style="display:none" @change="expSelImg">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <p>点击或拖拽上传图片</p>
+              <span>支持 PNG / JPG</span>
+            </div>
+            <div v-else class="canvas-wrap">
+              <canvas ref="expCanvas" @mousedown="expCropStart" @mousemove="expCropMove" @mouseup="expCropEnd" @mouseleave="expCropEnd"></canvas>
+              <div class="canvas-toolbar">
+                <span class="crop-info" v-if="expCropRect">裁剪: {{expCropRect.x}},{{expCropRect.y}} → {{expCropRect.x+expCropRect.w}},{{expCropRect.y+expCropRect.h}} ({{expCropRect.w}}x{{expCropRect.h}})</span>
+                <span class="crop-info" v-else>在图片上拖拽框选裁剪区域（可选）</span>
+                <div style="display:flex;gap:6px;">
+                  <button class="btn btn-ghost btn-sm" @click="expClearCrop">清除框选</button>
+                  <button class="btn btn-ghost btn-sm" @click="expRemoveImg">换图</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 右：音频 + 提交 -->
+          <div>
+            <div class="exp-panel">
+              <h4>音频文件</h4>
+              <div class="upload-zone" @click="$refs.expAudIn.click()" @dragover.prevent @drop.prevent="expDropAud" v-if="!expAudFile">
+                <input ref="expAudIn" type="file" accept=".wav,.mp3,.m4a" style="display:none" @change="expSelAud">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                <p>点击或拖拽上传音频</p>
+                <span>支持 WAV / MP3 / M4A</span>
+              </div>
+              <div v-else class="file-info">
+                <div class="file-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                </div>
+                <div class="file-detail">
+                  <div>{{ expAudFile.filename }}</div>
+                  <div style="font-size:11px;color:var(--text2);">{{ (expAudFile.file_size/1024).toFixed(1) }} KB</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" @click="expAudFile=null;expAudFileId=null">移除</button>
+              </div>
+            </div>
+            <div class="exp-panel" style="margin-top:16px;">
+              <h4>提交</h4>
+              <div style="margin-bottom:12px;font-size:13px;color:var(--text2);">
+                图片: <span :style="{color:expImgFileId?'var(--green)':'var(--red)'}">{{ expImgFileId?'已上传':'未上传' }}</span>
+                &nbsp;|&nbsp;
+                音频: <span :style="{color:expAudFileId?'var(--green)':'var(--red)'}">{{ expAudFileId?'已上传':'未上传' }}</span>
+                <span v-if="expCropRect">&nbsp;|&nbsp; 已框选区域</span>
+              </div>
+              <button class="btn btn-primary" style="width:100%;" @click="expSubmit" :disabled="!expImgFileId||!expAudFileId||expBusy">
+                {{ expBusy ? '提交中...' : '提交合成任务' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<script>
+const {createApp,ref,reactive,computed,onMounted,watch,nextTick} = Vue
+createApp({
+  setup(){
+    const token=ref(sessionStorage.getItem('gw_token')||'')
+    const username=ref(''), password=ref(''), loginErr=ref(''), tab=ref('overview')
+    const tabs=[{key:'overview',label:'概览'},{key:'nodes',label:'节点管理'},{key:'tasks',label:'任务中心'},{key:'experience',label:'体验中心'}]
+    const nodes=ref([]), tasks=ref([]), taskTotal=ref(0)
+    const tf=reactive({node_id:'',status:'',page:1,ps:15})
+    const statusOpts=[{v:'',l:'全部'},{v:'pending',l:'排队中'},{v:'running',l:'推理中'},{v:'completed',l:'已完成'},{v:'failed',l:'失败'}]
+    const pvId=ref(''), pvUrl=ref(''), refreshing=ref(false)
+    const showAddNode=ref(false)
+    const addNode=reactive({id:'',name:'',url:'',api_key:''})
+    const addNodeErr=ref('')
+
+    // 集群统计
+    const clusterStats=reactive({total_nodes:0,healthy_nodes:0,active_nodes:0,total_queue:0,total:0,pending:0,running:0,completed:0,failed:0})
+    const loadStats=async()=>{const d=await api('GET','/api/tasks/cluster/stats');if(d.code===200)Object.assign(clusterStats,d.data)}
+
+    // 节点分页
+    const np=ref(1)
+    const nodePS=20
+    const nodeTotalPages=computed(()=>Math.max(1,Math.ceil(nodes.value.length/nodePS)))
+    const pagedNodes=computed(()=>{const s=(np.value-1)*nodePS;return nodes.value.slice(s,s+nodePS)})
+    const nodePageRange=computed(()=>{const t=nodeTotalPages.value,c=np.value,ps=[];let s=Math.max(1,c-2),e=Math.min(t,s+4);s=Math.max(1,e-4);for(let i=s;i<=e;i++)ps.push(i);return ps})
+    watch(()=>nodes.value.length,()=>{if(np.value>nodeTotalPages.value)np.value=1})
+
+    // 任务分页范围
+    const taskPageRange=computed(()=>{const t=Math.max(1,Math.ceil(taskTotal.value/tf.ps)),c=tf.page,ps=[];let s=Math.max(1,c-2),e=Math.min(t,s+4);s=Math.max(1,e-4);for(let i=s;i<=e;i++)ps.push(i);return ps})
+
+    const api=async(m,u,o={})=>{
+      const h={'Authorization':'Bearer '+token.value,...(o.headers||{})}
+      const opts={method:m,headers:h,...o}
+      if(o.json){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(o.json);delete opts.json}
+      return (await fetch(u,opts)).json()
+    }
+    const doLogin=async()=>{
+      loginErr.value=''
+      try{
+        const d=await api('POST','/admin/login',{json:{username:username.value,password:password.value}})
+        if(d.code===200){token.value=d.data.token;sessionStorage.setItem('gw_token',d.data.token);loadNodes();loadTasks()}
+        else loginErr.value=d.message||d.msg||'登录失败'
+      }catch(e){loginErr.value='网络错误'}
+    }
+    const logout=async()=>{try{await api('POST','/admin/logout')}catch(e){};token.value='';sessionStorage.removeItem('gw_token')}
+    const loadNodes=async()=>{const d=await api('GET','/admin/nodes');if(d.code===200)nodes.value=d.data.nodes||[]}
+    const removeNode=async(id)=>{if(!confirm('确认移除 '+id+'?'))return;await api('DELETE','/admin/nodes/'+id);loadNodes()}
+    const doAddNode=async()=>{
+      addNodeErr.value=''
+      if(!addNode.id||!addNode.url){addNodeErr.value='节点ID和地址为必填项';return}
+      const d=await api('POST','/admin/nodes',{json:{id:addNode.id,name:addNode.name,url:addNode.url,api_key:addNode.api_key}})
+      if(d.code===200){showAddNode.value=false;addNode.id='';addNode.name='';addNode.url='';addNode.api_key='';loadNodes()}
+      else addNodeErr.value=d.message||d.msg||'添加失败'
+    }
+    const loadTasks=async()=>{
+      const p=new URLSearchParams({page:tf.page,page_size:tf.ps})
+      if(tf.node_id)p.set('node_id',tf.node_id);if(tf.status)p.set('status',tf.status)
+      const d=await api('GET','/api/tasks/list?'+p);if(d.code===200){tasks.value=d.data.items;taskTotal.value=d.data.total}
+    }
+    const togglePv=(t)=>{if(pvId.value===t.task_id){pvId.value='';pvUrl.value='';return};pvId.value=t.task_id;pvUrl.value='/api/proxy/'+t.node_id+'/tasks/'+t.task_id+'/preview?token='+token.value}
+    const dlTask=(t)=>{window.open('/api/proxy/'+t.node_id+'/tasks/'+t.task_id+'/download?token='+token.value,'_blank')}
+    const fmtTime=(s)=>{if(!s)return'-';return new Date(s).toLocaleString('zh-CN')}
+    const sCls=(s)=>({pending:'pending',running:'running',completed:'completed',failed:'failed'}[s]||'')
+    const sLbl=(s)=>({pending:'排队中',running:'推理中',completed:'已完成',failed:'失败',cancelled:'已取消'}[s]||s)
+    // 体验中心（对齐节点前端交互）
+    const expToast=ref(null)
+    const expImgPreview=ref(null), expImgFileId=ref(null), expImgNatW=ref(0), expImgNatH=ref(0), expImgNodeId=ref(null)
+    const expAudFile=ref(null), expAudFileId=ref(null), expAudNodeId=ref(null)
+    const expCanvas=ref(null), expCropRect=ref(null), expBusy=ref(false)
+    let expDrawing=false, expStartX=0, expStartY=0, expCanvasScale=1
+
+    function expShowToast(ok,text){expToast.value={ok,text};setTimeout(()=>expToast.value=null,4000)}
+
+    async function expHandleImg(file){
+      if(!file)return
+      const reader=new FileReader()
+      reader.onload=async(e)=>{
+        expImgPreview.value=e.target.result
+        const img=new Image()
+        img.onload=()=>{expImgNatW.value=img.naturalWidth;expImgNatH.value=img.naturalHeight;nextTick(()=>expDrawCanvas())}
+        img.src=e.target.result
+      }
+      reader.readAsDataURL(file)
+      const fd=new FormData();fd.append('file',file)
+      const r=await api('POST','/api/experience/upload',{body:fd})
+      if(r.code===200){expImgFileId.value=r.data.file_id;expImgNodeId.value=r.data.node_id;expShowToast(true,'图片上传成功')}
+      else expShowToast(false,r.msg||'上传失败')
+    }
+    function expSelImg(e){expHandleImg(e.target.files[0])}
+    function expDropImg(e){expHandleImg(e.dataTransfer.files[0])}
+    function expRemoveImg(){expImgPreview.value=null;expImgFileId.value=null;expImgNodeId.value=null;expCropRect.value=null}
+
+    function expDrawCanvas(rect){
+      const cvs=expCanvas.value;if(!cvs||!expImgPreview.value)return
+      const ctx=cvs.getContext('2d'),img=new Image()
+      img.onload=()=>{
+        const maxW=cvs.parentElement.clientWidth;expCanvasScale=maxW/img.naturalWidth
+        cvs.width=maxW;cvs.height=img.naturalHeight*expCanvasScale
+        ctx.drawImage(img,0,0,cvs.width,cvs.height)
+        const r=rect||expCropRect.value
+        if(r){
+          ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(0,0,cvs.width,cvs.height)
+          const sx=r.x*expCanvasScale,sy=r.y*expCanvasScale,sw=r.w*expCanvasScale,sh=r.h*expCanvasScale
+          ctx.drawImage(img,r.x,r.y,r.w,r.h,sx,sy,sw,sh)
+          ctx.strokeStyle='var(--primary)';ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.strokeRect(sx,sy,sw,sh);ctx.setLineDash([])
+          const cs=8;ctx.fillStyle='var(--primary)';
+          [[sx,sy],[sx+sw,sy],[sx,sy+sh],[sx+sw,sy+sh]].forEach(([cx,cy])=>{ctx.fillRect(cx-cs/2,cy-cs/2,cs,cs)})
+        }
+      }
+      img.src=expImgPreview.value
+    }
+    function expCropStart(e){expDrawing=true;const rect=expCanvas.value.getBoundingClientRect();expStartX=(e.clientX-rect.left)/expCanvasScale;expStartY=(e.clientY-rect.top)/expCanvasScale}
+    function expCropMove(e){if(!expDrawing)return;const rect=expCanvas.value.getBoundingClientRect();const cx=(e.clientX-rect.left)/expCanvasScale,cy=(e.clientY-rect.top)/expCanvasScale;const x=Math.max(0,Math.min(expStartX,cx)),y=Math.max(0,Math.min(expStartY,cy));const w=Math.min(Math.abs(cx-expStartX),expImgNatW.value-x),h=Math.min(Math.abs(cy-expStartY),expImgNatH.value-y);const r={x:Math.round(x),y:Math.round(y),w:Math.round(w),h:Math.round(h)};expCropRect.value=r;expDrawCanvas(r)}
+    function expCropEnd(){expDrawing=false}
+    function expClearCrop(){expCropRect.value=null;expDrawCanvas()}
+
+    async function expHandleAud(file){
+      if(!file)return
+      const fd=new FormData();fd.append('file',file)
+      const url=expImgNodeId.value?'/api/experience/upload?node_id='+expImgNodeId.value:'/api/experience/upload'
+      const r=await api('POST',url,{body:fd})
+      if(r.code===200){expAudFile.value=r.data;expAudFileId.value=r.data.file_id;expAudNodeId.value=r.data.node_id;expShowToast(true,'音频上传成功')}
+      else expShowToast(false,r.msg||'上传失败')
+    }
+    function expSelAud(e){expHandleAud(e.target.files[0])}
+    function expDropAud(e){expHandleAud(e.dataTransfer.files[0])}
+
+    async function expSubmit(){
+      expBusy.value=true
+      const body={image_file_id:expImgFileId.value,audio_file_id:expAudFileId.value,node_id:expImgNodeId.value}
+      if(expCropRect.value&&expCropRect.value.w>10&&expCropRect.value.h>10){const r=expCropRect.value;body.crop_region=[r.x,r.y,r.x+r.w,r.y+r.h]}
+      const res=await api('POST','/api/experience/synthesize',{json:body})
+      expBusy.value=false
+      if(res.code===200&&res.data){
+        expShowToast(true,'任务已创建');tab.value='tasks';tf.status='';tf.page=1;await loadTasks()
+        expPollTask(res.data.task_id)
+      }else expShowToast(false,res.msg||'创建失败')
+    }
+    function expPollTask(taskId){
+      const iv=setInterval(async()=>{
+        const r=await api('GET','/api/tasks/'+taskId)
+        if(r.code===200){
+          const idx=tasks.value.findIndex(t=>t.task_id===taskId)
+          if(idx>=0)tasks.value[idx]=r.data
+          if(['completed','failed','cancelled'].includes(r.data.status)){clearInterval(iv);loadTasks()}
+        }
+      },3000)
+    }
+
+    const _refresh=async()=>{if(!token.value)return;refreshing.value=true;const v=tab.value;if(v==='overview'){await Promise.all([loadNodes(),loadStats()])}else if(v==='nodes')await loadNodes();else if(v==='tasks')await loadTasks();setTimeout(()=>refreshing.value=false,600)}
+    onMounted(()=>{if(token.value){loadNodes();loadTasks();loadStats()};setInterval(_refresh,3000)})
+    watch(tab,(v)=>{if(v==='tasks')loadTasks();if(v==='nodes'||v==='overview'){loadNodes();loadStats()}})
+    return {token,username,password,loginErr,tab,tabs,nodes,tasks,taskTotal,tf,statusOpts,pvId,pvUrl,refreshing,
+      showAddNode,addNode,addNodeErr,clusterStats,np,pagedNodes,nodeTotalPages,nodePageRange,taskPageRange,
+      expToast,expImgPreview,expImgFileId,expAudFile,expAudFileId,expCanvas,expCropRect,expBusy,
+      doLogin,logout,loadNodes,removeNode,doAddNode,loadTasks,loadStats,togglePv,dlTask,fmtTime,sCls,sLbl,
+      expSelImg,expDropImg,expRemoveImg,expDrawCanvas,expCropStart,expCropMove,expCropEnd,expClearCrop,
+      expSelAud,expDropAud,expSubmit}
+  }
+}).mount('#app')
+</script>
+</body>
+</html>

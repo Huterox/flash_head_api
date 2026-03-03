@@ -1,0 +1,30 @@
+gateway:
+  host: "0.0.0.0"
+  port: 8200
+  api_key: ""
+  admin_username: "admin"
+  admin_password: "admin123"
+  ssl_enabled: false
+  ssl:
+    certfile: "ssl/certificate.crt"
+    keyfile: "ssl/private.key"
+
+database:
+  host: ""
+  port: 5432
+  database: ""
+  user: "user"
+  password: ""
+
+nodes: []
+
+health_check:
+  interval: 30
+  timeout: 10
+  unhealthy_threshold: 3
+
+redis:
+  host: ""
+  port: 6378
+  password: ""
+  db: 0
