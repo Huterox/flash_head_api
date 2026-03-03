@@ -36,7 +36,7 @@
 
 ## 功能特性
 
-- **双模式推理** — lite（单卡蒸馏模型，4 步推理）/ pro（多卡序列并行，20 步推理）
+- **双模式推理** — lite（单卡蒸馏模型）/ pro（预训练模型，支持单卡或双卡序列并行）
 - **自动人脸裁剪** — 基于 MediaPipe 的 CPU 人脸检测，自动定位并裁剪头肩正方形区域；也支持前端手动指定裁剪区域
 - **异步任务队列** — Redis 队列 + 单线程池串行调度，提交即返回 task_id，轮询获取进度
 - **管理面板** — 内置 Vue 3 单页面，暗色主题，可视化管理任务与文件
@@ -86,8 +86,8 @@ once_flash_head_api/
 ├── checkpoint/                     # 模型权重（需自行下载，已 gitignore）
 │   ├── SoulX-FlashHead-1_3B/      #   FlashHead 1.3B 模型
 │   └── wav2vec2-base-960h/         #   wav2vec2 音频编码器
-├── libs/                           # 外部工具
-│   └── ffmpeg.exe                  #   FFmpeg 可执行文件
+├── libs/                           # 外部工具（已 gitignore，需自行下载）
+│   └── ffmpeg(.exe)                #   FFmpeg 可执行文件
 ├── images/                         # README 截图
 ├── templates/
 │   └── index.html                  # Vue 3 管理面板（暗色主题单页应用）
@@ -112,7 +112,14 @@ once_flash_head_api/
 | Redis | 5+ |
 | FFmpeg | 4.4+ |
 
-> GPU 显存需求：lite 模式约 8 GB，pro 模式需要两张 GPU。
+> GPU 显存需求：lite 模式约 8 GB，pro 模式约 18 GB（单卡 4090 24GB 可运行）。
+
+### FFmpeg
+
+项目依赖 FFmpeg 进行视频编码，需要自行下载并放置到 `libs/` 目录下，然后在 `config.yml` 中配置 `ffmpeg_path` 为绝对路径。
+
+- **Windows**：下载 [ffmpeg-release-essentials.zip](https://www.gyan.dev/ffmpeg/builds/)，解压后将 `ffmpeg.exe` 放入 `libs/`
+- **Linux**：下载 [ffmpeg-release-amd64-static.tar.xz](https://johnvansickle.com/ffmpeg/)，解压后将 `ffmpeg` 二进制放入 `libs/`
 
 ---
 
@@ -258,10 +265,12 @@ GET /api/tasks/{task_id}/download
 
 | 模式 | 模型 | 推理步数 | GPU 需求 | 说明 |
 |------|------|---------|---------|------|
-| **lite** | 蒸馏模型 | 4 steps | 单卡 (~8GB) | 速度快，适合实时场景 |
-| **pro** | 预训练模型 | 20 steps | 双卡 | 质量高，自动 torchrun 序列并行 |
+| **lite** | 蒸馏模型 (1.3B) | 4 steps | 单卡 (~8GB) | 速度快，适合实时场景 |
+| **pro** | 预训练模型 (1.3B) | 4 steps | 单卡 (~18GB) 或 双卡 | 质量更高，单卡 4090 24GB 可运行；双卡自动 torchrun 序列并行 |
 
-在 `config.yml` 中设置 `flashhead.mode` 切换模式。pro 模式通过 `flashhead.pro_device_ids` 指定 GPU。
+> Teacher 模型尚未发布，当前 pro 模式使用已发布的预训练模型。
+
+在 `config.yml` 中设置 `flashhead.mode` 切换模式。pro 双卡模式通过 `flashhead.pro_device_ids` 指定 GPU。
 
 ---
 
