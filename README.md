@@ -2,8 +2,6 @@
 
 基于 [SoulX-FlashHead](https://github.com/Soul-AILab/SoulX-FlashHead) 的说话头部视频生成服务。上传一张人像图片和一段音频，自动裁剪头肩区域并生成 512×512 的说话头部视频。
 
-服务层对齐 [Once Edge](https://github.com/Starter-Kit-Org) 算法服务标准架构，提供完整的 RESTful API、异步任务队列和可视化管理面板。
-
 ---
 
 ## 系统截图
