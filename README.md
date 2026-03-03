@@ -307,4 +307,4 @@ POST /api/tasks/synthesize
 
 ## 许可证
 
-本项目基于 [Apache License 2.0](LICENSE) 开源。`flash_head/` 目录下的核心算法代码请遵循 [SoulX-FlashHead](https://github.com/Soul-AILab/SoulX-FlashHead) 原始许可协议。
+本项目基于 [Apache License 2.0](LICENSE) 开源。
