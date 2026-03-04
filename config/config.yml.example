@@ -19,7 +19,7 @@ flashhead:
   mode: lite                    # lite: 单卡蒸馏模型(steps=4) | pro: 双卡预训练模型(steps=20, 需要 torchrun 启动)
   ckpt_dir: "/checkpoint/SoulX-FlashHead-1_3B"
   wav2vec_dir: "/checkpoint/wav2vec2-base-960h"
-  face_ratio: 2.0
+  face_ratio: 3.0
   torch_compile: false            # 是否启用 torch.compile（双卡 pro 模式建议关闭）
   pro_device_ids: "0,1"         # pro 模式使用的两张 GPU（xfuser sequence parallel）
 
