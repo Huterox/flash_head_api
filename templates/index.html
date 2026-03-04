@@ -234,6 +234,12 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; back
                             音频: <span :style="{color: audioFileId ? 'var(--green)' : 'var(--red)'}">{{ audioFileId ? '已上传' : '未上传' }}</span>
                             <span v-if="cropRect">&nbsp;|&nbsp; 已框选区域</span>
                         </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;">
+                                <input type="checkbox" v-model="restoreToOriginal" style="width:16px;height:16px;cursor:pointer;">
+                                <span>贴回原图（生成的头部视频将贴回原图尺寸，其他区域保持静止）</span>
+                            </label>
+                        </div>
                         <button class="btn btn-primary" style="width:100%;" @click="createTask" :disabled="!imageFileId || !audioFileId || submitting">
                             {{ submitting ? '提交中...' : '提交合成任务' }}
                         </button>
@@ -387,6 +393,7 @@ createApp({
         const imageNatH = ref(0);
         const audioFile = ref(null);
         const audioFileId = ref(null);
+        const restoreToOriginal = ref(false);  // 是否贴回原图
 
         // Canvas 框选
         const cropCanvas = ref(null);
@@ -503,7 +510,11 @@ createApp({
         // 创建任务
         async function createTask() {
             submitting.value = true;
-            const body = { image_file_id: imageFileId.value, audio_file_id: audioFileId.value };
+            const body = {
+                image_file_id: imageFileId.value,
+                audio_file_id: audioFileId.value,
+                restore_to_original: restoreToOriginal.value
+            };
             if (cropRect.value && cropRect.value.w > 10 && cropRect.value.h > 10) {
                 const r = cropRect.value;
                 body.crop_region = [r.x, r.y, r.x + r.w, r.y + r.h];
@@ -579,7 +590,7 @@ createApp({
             tab, health, sched, toast, tasks, submitting, previewId, refreshing,
             authed, inputKey, loginErr, doLogin,
             filterStatus, searchKeyword, filterOptions, taskPage, taskTotal, taskTotalPages, loadTasks,
-            imagePreview, imageFileId, imageNatW, imageNatH, audioFile, audioFileId,
+            imagePreview, imageFileId, imageNatW, imageNatH, audioFile, audioFileId, restoreToOriginal,
             cropCanvas, cropRect,
             onSelectImage, onDropImage, removeImage,
             onCropStart, onCropMove, onCropEnd, clearCrop, drawCanvas,

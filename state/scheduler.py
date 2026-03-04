@@ -88,6 +88,7 @@ class TaskScheduler:
                 audio_path=audio_file["stored_path"],
                 output_path=output_path,
                 crop_region=config.get("crop_region"),
+                restore_to_original=config.get("restore_to_original", False),
                 progress_callback=on_progress,
             )
 
