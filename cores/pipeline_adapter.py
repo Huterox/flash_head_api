@@ -202,12 +202,16 @@ def _paste_back_video(
     Args:
         generated_video_path: 生成的 512×512 视频路径
         original_image_path: 原图路径
-        crop_coords: 裁剪坐标 [x1, y1, x2, y2]
+        crop_coords: 裁剪坐标 [x1, y1, x2, y2]（用户选择或自动检测的区域）
         audio_path: 音频路径
         output_path: 最终输出路径
 
     Returns:
         输出视频路径
+
+    注意：
+        需要反向计算 resize_and_centercrop 的实际使用区域，因为 FlashHead 会对裁剪图进行
+        缩放+中心裁剪到 512×512，生成的视频对应的是裁剪后的中心区域
     """
     cfg = get_config()
     x1, y1, x2, y2 = crop_coords
@@ -218,6 +222,37 @@ def _paste_back_video(
     if bg_img is None:
         raise ValueError(f"无法读取原图: {original_image_path}")
     orig_h, orig_w = bg_img.shape[:2]
+
+    # 计算 resize_and_centercrop 的实际使用区域
+    # FlashHead 会将裁剪图缩放+中心裁剪到 512×512
+    target_size = 512
+    scale_h = target_size / crop_h
+    scale_w = target_size / crop_w
+    scale = max(scale_h, scale_w)  # 保证至少一边填满
+
+    # 缩放后的尺寸
+    scaled_h = int(crop_h * scale)
+    scaled_w = int(crop_w * scale)
+
+    # 中心裁剪的偏移量（在缩放后的图片上）
+    crop_offset_y = (scaled_h - target_size) // 2
+    crop_offset_x = (scaled_w - target_size) // 2
+
+    # 反向映射到原始裁剪区域的坐标（在原图坐标系中）
+    # 512×512 视频对应的是裁剪区域中的一个子区域
+    actual_x1 = x1 + int(crop_offset_x / scale)
+    actual_y1 = y1 + int(crop_offset_y / scale)
+    actual_x2 = actual_x1 + int(target_size / scale)
+    actual_y2 = actual_y1 + int(target_size / scale)
+
+    # 确保不超出原图边界
+    actual_x1 = max(0, actual_x1)
+    actual_y1 = max(0, actual_y1)
+    actual_x2 = min(orig_w, actual_x2)
+    actual_y2 = min(orig_h, actual_y2)
+
+    actual_w = actual_x2 - actual_x1
+    actual_h = actual_y2 - actual_y1
 
     # 打开生成的视频
     cap = cv2.VideoCapture(generated_video_path)
@@ -232,7 +267,9 @@ def _paste_back_video(
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(temp_output, fourcc, fps, (orig_w, orig_h))
 
-    logger.info(f"开始贴回原图：原图尺寸 {orig_w}x{orig_h}，贴回区域 [{x1},{y1},{x2},{y2}]，总帧数 {frame_count}")
+    logger.info(f"开始贴回原图：原图尺寸 {orig_w}x{orig_h}")
+    logger.info(f"  用户裁剪区域: [{x1},{y1},{x2},{y2}] ({crop_w}x{crop_h})")
+    logger.info(f"  实际贴回区域: [{actual_x1},{actual_y1},{actual_x2},{actual_y2}] ({actual_w}x{actual_h})")
 
     # 逐帧处理
     frame_idx = 0
@@ -241,14 +278,14 @@ def _paste_back_video(
         if not ret:
             break
 
-        # 缩放生成帧到裁剪区域大小
-        resized_frame = cv2.resize(frame, (crop_w, crop_h), interpolation=cv2.INTER_LINEAR)
+        # 将 512×512 生成帧缩放到实际贴回区域大小
+        resized_frame = cv2.resize(frame, (actual_w, actual_h), interpolation=cv2.INTER_LINEAR)
 
         # 复制背景图
         composite = bg_img.copy()
 
-        # 贴回指定区域
-        composite[y1:y2, x1:x2] = resized_frame
+        # 贴回到实际区域
+        composite[actual_y1:actual_y2, actual_x1:actual_x2] = resized_frame
 
         out.write(composite)
         frame_idx += 1
