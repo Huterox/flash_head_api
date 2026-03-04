@@ -7,6 +7,7 @@ class SynthesizeRequest(BaseModel):
     image_file_id: str = Field(..., description="上传的图片文件ID")
     audio_file_id: str = Field(..., description="上传的音频文件ID")
     crop_region: Optional[List[int]] = Field(None, description="裁剪区域 [x1, y1, x2, y2]，不传则自动人脸检测")
+    restore_to_original: bool = Field(False, description="是否将生成的头部视频贴回原图")
 
 
 class TaskResponse(BaseModel):

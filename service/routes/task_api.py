@@ -31,6 +31,7 @@ def create_synthesize_task(req: SynthesizeRequest):
         "image_file_id": req.image_file_id,
         "audio_file_id": req.audio_file_id,
         "crop_region": req.crop_region,
+        "restore_to_original": req.restore_to_original,
     }
     TaskDB.create_task(task_id, node_id, config)
     scheduler.submit_task(task_id)

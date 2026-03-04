@@ -11,7 +11,7 @@ import numpy as np
 import cv2
 import librosa
 from collections import deque
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from config import get_config
 from loguru import logger
@@ -139,7 +139,17 @@ def _broadcast_run_pipeline(audio_embedding):
 
 # ==================== 图片裁剪 ====================
 
-def _crop_image(image_path: str, crop_region: Optional[List[int]] = None) -> str:
+def _crop_image(image_path: str, crop_region: Optional[List[int]] = None) -> Tuple[str, str, List[int]]:
+    """
+    裁剪图片为正方形区域
+
+    Args:
+        image_path: 原图路径
+        crop_region: 可选的裁剪区域 [x1, y1, x2, y2]
+
+    Returns:
+        Tuple[裁剪后路径, 原图路径, 裁剪坐标[x1, y1, x2, y2]]
+    """
     cfg = get_config()
     face_ratio = cfg.flashhead.face_ratio
 
@@ -174,13 +184,154 @@ def _crop_image(image_path: str, crop_region: Optional[List[int]] = None) -> str
     tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4()}.png")
     cv2.imwrite(tmp_path, crop)
     logger.info(f"裁剪区域: [{x1},{y1},{x2},{y2}] = {x2-x1}x{y2-y1}")
-    return tmp_path
+    return tmp_path, image_path, [x1, y1, x2, y2]
+
+
+# ==================== 贴回原图 ====================
+
+def _paste_back_video(
+    generated_video_path: str,
+    original_image_path: str,
+    crop_coords: List[int],
+    audio_path: str,
+    output_path: str
+) -> str:
+    """
+    将生成的 512×512 大头视频逐帧贴回原图
+
+    Args:
+        generated_video_path: 生成的 512×512 视频路径
+        original_image_path: 原图路径
+        crop_coords: 裁剪坐标 [x1, y1, x2, y2]（用户选择或自动检测的区域）
+        audio_path: 音频路径
+        output_path: 最终输出路径
+
+    Returns:
+        输出视频路径
+
+    注意：
+        需要反向计算 resize_and_centercrop 的实际使用区域，因为 FlashHead 会对裁剪图进行
+        缩放+中心裁剪到 512×512，生成的视频对应的是裁剪后的中心区域
+    """
+    cfg = get_config()
+    x1, y1, x2, y2 = crop_coords
+    crop_w, crop_h = x2 - x1, y2 - y1
+
+    # 读取原图作为静止背景
+    bg_img = cv2.imread(original_image_path)
+    if bg_img is None:
+        raise ValueError(f"无法读取原图: {original_image_path}")
+    orig_h, orig_w = bg_img.shape[:2]
+
+    # 计算 resize_and_centercrop 的实际使用区域
+    # FlashHead 会将裁剪图缩放+中心裁剪到 512×512
+    target_size = 512
+    scale_h = target_size / crop_h
+    scale_w = target_size / crop_w
+    scale = max(scale_h, scale_w)  # 保证至少一边填满
+
+    # 缩放后的尺寸
+    scaled_h = int(crop_h * scale)
+    scaled_w = int(crop_w * scale)
+
+    # 中心裁剪的偏移量（在缩放后的图片上）
+    crop_offset_y = (scaled_h - target_size) // 2
+    crop_offset_x = (scaled_w - target_size) // 2
+
+    # 反向映射到原始裁剪区域的坐标（在原图坐标系中）
+    # 512×512 视频对应的是裁剪区域中的一个子区域
+    actual_x1 = x1 + int(crop_offset_x / scale)
+    actual_y1 = y1 + int(crop_offset_y / scale)
+    actual_x2 = actual_x1 + int(target_size / scale)
+    actual_y2 = actual_y1 + int(target_size / scale)
+
+    # 确保不超出原图边界
+    actual_x1 = max(0, actual_x1)
+    actual_y1 = max(0, actual_y1)
+    actual_x2 = min(orig_w, actual_x2)
+    actual_y2 = min(orig_h, actual_y2)
+
+    actual_w = actual_x2 - actual_x1
+    actual_h = actual_y2 - actual_y1
+
+    # 打开生成的视频
+    cap = cv2.VideoCapture(generated_video_path)
+    if not cap.isOpened():
+        raise ValueError(f"无法打开视频: {generated_video_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # 创建临时输出（无音频）
+    temp_output = output_path.replace('.mp4', '_composite_temp.mp4')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(temp_output, fourcc, fps, (orig_w, orig_h))
+
+    logger.info(f"开始贴回原图：原图尺寸 {orig_w}x{orig_h}")
+    logger.info(f"  用户裁剪区域: [{x1},{y1},{x2},{y2}] ({crop_w}x{crop_h})")
+    logger.info(f"  实际贴回区域: [{actual_x1},{actual_y1},{actual_x2},{actual_y2}] ({actual_w}x{actual_h})")
+
+    # 逐帧处理
+    frame_idx = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # 将 512×512 生成帧缩放到实际贴回区域大小
+        resized_frame = cv2.resize(frame, (actual_w, actual_h), interpolation=cv2.INTER_LINEAR)
+
+        # 复制背景图
+        composite = bg_img.copy()
+
+        # 贴回到实际区域
+        composite[actual_y1:actual_y2, actual_x1:actual_x2] = resized_frame
+
+        out.write(composite)
+        frame_idx += 1
+
+    cap.release()
+    out.release()
+
+    logger.info(f"贴回完成 {frame_idx} 帧，开始添加音频")
+
+    # 使用 FFmpeg 添加音频并重新编码
+    final_cmd = [
+        cfg.ffmpeg_path, '-y',
+        '-i', temp_output,
+        '-i', audio_path,
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '23',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-shortest',
+        '-v', 'warning',
+        output_path
+    ]
+
+    try:
+        subprocess.run(final_cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg 编码失败: {e.stderr.decode()}")
+        raise
+
+    # 删除临时文件
+    try:
+        os.remove(temp_output)
+    except OSError:
+        pass
+
+    logger.info(f"贴回原图完成，输出视频：{output_path}")
+    return output_path
 
 
 # ==================== 合成主流程 ====================
 
 def synthesize(image_path: str, audio_path: str, output_path: str,
                crop_region: Optional[List[int]] = None,
+               restore_to_original: bool = False,
                progress_callback=None) -> str:
     global _pipeline, _infer_params
     if _pipeline is None:
@@ -189,8 +340,8 @@ def synthesize(image_path: str, audio_path: str, output_path: str,
     from flash_head.inference import get_base_data, get_audio_embedding, run_pipeline
     cfg = get_config()
 
-    # 1. 裁剪图片
-    crop_path = _crop_image(image_path, crop_region)
+    # 1. 裁剪图片（返回三个值：裁剪后路径、原图路径、裁剪坐标）
+    crop_path, orig_path, crop_coords = _crop_image(image_path, crop_region)
 
     # 2. 设置条件图（pro 模式需要广播给其他 rank）
     if _is_pro:
@@ -218,15 +369,21 @@ def synthesize(image_path: str, audio_path: str, output_path: str,
     speech_slices = speech_array[:total_samples].reshape(-1, human_speech_slice_len)
     total_chunks = len(speech_slices)
 
-    # 5. FFmpeg 编码进程
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # 5. 确定输出路径（如果需要贴回原图，先输出到临时路径）
+    if restore_to_original:
+        temp_video_path = output_path.replace('.mp4', '_head_only.mp4')
+    else:
+        temp_video_path = output_path
+
+    # 6. FFmpeg 编码进程
+    os.makedirs(os.path.dirname(temp_video_path), exist_ok=True)
     cmd = [
         cfg.ffmpeg_path, '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
         '-s', f'{width}x{height}', '-pix_fmt', 'rgb24', '-r', str(tgt_fps),
         '-i', '-', '-i', audio_path,
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-shortest', '-bf', '0', '-v', 'warning',
-        output_path,
+        temp_video_path,
     ]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     audio_dq = deque([0.0] * cached_audio_length_sum, maxlen=cached_audio_length_sum)
@@ -255,7 +412,17 @@ def synthesize(image_path: str, audio_path: str, output_path: str,
         proc.stdin.close()
         proc.wait()
 
-    # 7. 清理临时裁剪图
+    # 7. 如果启用贴回原图，将大头视频贴回到原图
+    if restore_to_original:
+        logger.info("启用贴回原图模式，开始合成")
+        _paste_back_video(temp_video_path, orig_path, crop_coords, audio_path, output_path)
+        # 删除临时大头视频
+        try:
+            os.remove(temp_video_path)
+        except OSError:
+            pass
+
+    # 8. 清理临时裁剪图
     try:
         os.remove(crop_path)
     except OSError:
