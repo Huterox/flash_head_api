@@ -70,6 +70,15 @@ class GatewayConfig(BaseModel):
     heartbeat_interval: int = 30
 
 
+class RVMConfig(BaseModel):
+    enabled: bool = True
+    variant: str = "resnet50"
+    checkpoint: str = "checkpoint/rvm_resnet50.pth"
+    device: str = "cuda"
+    bg_color: List[int] = [0, 255, 0]  # BGR 格式
+    downsample_ratio: float = 0.5
+
+
 class AppConfig(BaseModel):
     node: NodeConfig = NodeConfig()
     database: DatabaseConfig = DatabaseConfig()
@@ -77,6 +86,7 @@ class AppConfig(BaseModel):
     flashhead: FlashHeadConfig = FlashHeadConfig()
     server: ServerConfig = ServerConfig()
     gateway: GatewayConfig = GatewayConfig()
+    rvm: RVMConfig = RVMConfig()
     device_ids: str = "0"
     ffmpeg_path: str = "libs/ffmpeg.exe"
     cache_dir: str = "cache"

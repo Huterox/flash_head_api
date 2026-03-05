@@ -32,10 +32,12 @@ def create_synthesize_task(req: SynthesizeRequest):
         "audio_file_id": req.audio_file_id,
         "crop_region": req.crop_region,
         "restore_to_original": req.restore_to_original,
+        "bg_remove": req.bg_remove,
+        "bg_color": req.bg_color,
     }
     TaskDB.create_task(task_id, node_id, config)
     scheduler.submit_task(task_id)
-    logger.info(f"创建任务: {task_id}")
+    logger.info(f"创建任务: {task_id} | 配置: restore_to_original={req.restore_to_original}, bg_remove={req.bg_remove}, bg_color={req.bg_color}")
     return JSONResponse(content=R.ok().data({"task_id": task_id, "status": "pending"}))
 
 

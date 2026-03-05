@@ -36,6 +36,8 @@
 
 - **双模式推理** — lite（单卡蒸馏模型）/ pro（预训练模型，支持单卡或双卡序列并行）
 - **自动人脸裁剪** — 基于 MediaPipe 的 CPU 人脸检测，自动定位并裁剪头肩正方形区域；也支持前端手动指定裁剪区域
+- **背景移除** — 集成 RVM (Robust Video Matting) 模型，支持将视频背景替换为自定义颜色（默认绿幕），便于后期抠像合成
+- **贴回原图** — 支持将生成的 512×512 头部视频贴回原图尺寸，其他区域保持静止
 - **异步任务队列** — Redis 队列 + 单线程池串行调度，提交即返回 task_id，轮询获取进度
 - **管理面板** — 内置 Vue 3 单页面，暗色主题，可视化管理任务与文件
 - **网关对接** — 支持向 Once Edge 网关自动注册节点 + 心跳保活
@@ -69,7 +71,14 @@ once_flash_head_api/
 │       ├── file_api.py             #     文件：上传
 │       └── system_api.py           #     系统：健康检查、调度器状态
 ├── cores/                          # 核心适配
-│   └── pipeline_adapter.py         #   FlashHead 推理适配器（初始化 / 预处理 / 推理 / 编码）
+│   ├── pipeline_adapter.py         #   FlashHead 推理适配器（初始化 / 预处理 / 推理 / 编码）
+│   ├── rvm_processor.py            #   RVM 背景移除处理器
+│   └── rvm/                        #   RVM 模型架构
+│       ├── model.py                #     MattingNetwork 主模型
+│       ├── decoder.py              #     解码器
+│       ├── mobilenetv3.py          #     MobileNetV3 backbone
+│       ├── resnet.py               #     ResNet50 backbone
+│       └── ...                     #     其他模块
 ├── utils/                          # 工具
 │   ├── result.py                   #   统一响应格式 R
 │   └── file_manager.py             #   文件上传管理
@@ -83,7 +92,8 @@ once_flash_head_api/
 │   └── configs/                    #   推理参数 (infer_params.yaml)
 ├── checkpoint/                     # 模型权重（需自行下载，已 gitignore）
 │   ├── SoulX-FlashHead-1_3B/      #   FlashHead 1.3B 模型
-│   └── wav2vec2-base-960h/         #   wav2vec2 音频编码器
+│   ├── wav2vec2-base-960h/         #   wav2vec2 音频编码器
+│   └── rvm_resnet50.pth            #   RVM 背景移除模型（可选）
 ├── libs/                           # 外部工具（已 gitignore，需自行下载）
 │   └── ffmpeg(.exe)                #   FFmpeg 可执行文件
 ├── images/                         # README 截图
@@ -150,8 +160,17 @@ pip install ninja && pip install flash_attn==2.8.0.post2 --no-build-isolation
 ```
 checkpoint/
 ├── SoulX-FlashHead-1_3B/    # FlashHead 模型权重
-└── wav2vec2-base-960h/       # wav2vec2 音频编码器
+├── wav2vec2-base-960h/       # wav2vec2 音频编码器
+└── rvm_resnet50.pth          # RVM 背景移除模型（可选，启用背景移除功能时需要）
 ```
+
+**RVM 模型下载：**
+
+如需使用背景移除功能，请下载 RVM 模型：
+
+- **下载地址**：[rvm_resnet50.pth](https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_resnet50.pth)
+- **放置位置**：`checkpoint/rvm_resnet50.pth`
+- **模型大小**：约 103 MB
 
 ### 4. 修改配置
 
@@ -170,6 +189,15 @@ flashhead:
   mode: lite                  # lite 或 pro
   ckpt_dir: "/absolute/path/to/checkpoint/SoulX-FlashHead-1_3B"
   wav2vec_dir: "/absolute/path/to/checkpoint/wav2vec2-base-960h"
+
+# RVM 背景移除配置（可选）
+rvm:
+  enabled: true               # 是否启用背景移除功能
+  variant: resnet50           # 模型变体：resnet50 或 mobilenetv3
+  checkpoint: "/absolute/path/to/checkpoint/rvm_resnet50.pth"
+  device: cuda                # 推理设备
+  bg_color: [0, 255, 0]       # 默认背景颜色 BGR 格式（绿色）
+  downsample_ratio: 0.5       # 下采样比例
 
 server:
   port: 8100
@@ -235,11 +263,21 @@ Content-Type: application/json
 {
   "image_file_id": "上传返回的 file_id",
   "audio_file_id": "上传返回的 file_id",
-  "crop_region": [x, y, w, h]
+  "crop_region": [x1, y1, x2, y2],
+  "restore_to_original": false,
+  "bg_remove": false,
+  "bg_color": "#00FF00"
 }
 ```
 
-- `crop_region` 为可选字段，不传则自动进行人脸检测裁剪
+**参数说明：**
+
+- `image_file_id` (必填)：上传图片返回的 file_id
+- `audio_file_id` (必填)：上传音频返回的 file_id
+- `crop_region` (可选)：裁剪区域 [x1, y1, x2, y2]，不传则自动人脸检测裁剪
+- `restore_to_original` (可选)：是否将生成的头部视频贴回原图尺寸，默认 false
+- `bg_remove` (可选)：是否移除背景并替换为纯色，默认 false
+- `bg_color` (可选)：背景颜色（十六进制格式），默认 `#00FF00`（绿色）
 
 ### 查询任务状态
 
@@ -288,7 +326,7 @@ POST /api/tasks/synthesize
        └─ 无 crop_region ──→ MediaPipe 人脸检测
                                   │
                                   ▼
-                          ratio=2.0 裁剪正方形
+                          ratio=3.0 裁剪正方形
                                   │
                                   ▼
                       resize_and_centercrop → 512×512
@@ -299,9 +337,16 @@ POST /api/tasks/synthesize
                                   ▼
                         FFmpeg 编码 → .mp4
                                   │
-                                  ▼
-              GET /api/tasks/{task_id} ──→ 查询状态
-              GET /api/tasks/{task_id}/download ──→ 下载视频
+                                  ├─ restore_to_original=true ──→ 贴回原图
+                                  │
+                                  └─ bg_remove=true ──→ RVM 背景移除
+                                                          │
+                                                          ▼
+                                              替换为自定义颜色背景
+                                                          │
+                                                          ▼
+                              GET /api/tasks/{task_id} ──→ 查询状态
+                              GET /api/tasks/{task_id}/download ──→ 下载视频
 ```
 
 ---
