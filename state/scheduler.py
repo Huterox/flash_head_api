@@ -70,6 +70,8 @@ class TaskScheduler:
             redis_client.set_progress(task_id, {"status": "running", "chunk": 0, "total": 0})
 
             config = task_dict["config"]
+            logger.info(f"[任务 {task_id}] 开始执行 | 配置: restore_to_original={config.get('restore_to_original')}, bg_remove={config.get('bg_remove')}, bg_color={config.get('bg_color')}")
+
             image_file = FileDB.get_file(config["image_file_id"])
             audio_file = FileDB.get_file(config["audio_file_id"])
             if not image_file or not audio_file:
@@ -77,11 +79,21 @@ class TaskScheduler:
 
             output_path = os.path.join(self.out_dir, task_id, f"{task_id}.mp4")
 
-            def on_progress(current, total):
-                redis_client.set_progress(task_id, {
-                    "status": "running", "chunk": current, "total": total,
-                    "percent": round(current / total * 100, 1) if total > 0 else 0,
-                })
+            def on_progress(current, total, stage=None, stage_name=None, percent=None):
+                progress_data = {
+                    "status": "running",
+                    "chunk": current,
+                    "total": total,
+                }
+                if stage:
+                    progress_data["stage"] = stage
+                if stage_name:
+                    progress_data["stage_name"] = stage_name
+                if percent is not None:
+                    progress_data["percent"] = percent
+                else:
+                    progress_data["percent"] = round(current / total * 100, 1) if total > 0 else 0
+                redis_client.set_progress(task_id, progress_data)
 
             result_path = synthesize(
                 image_path=image_file["stored_path"],
@@ -89,6 +101,8 @@ class TaskScheduler:
                 output_path=output_path,
                 crop_region=config.get("crop_region"),
                 restore_to_original=config.get("restore_to_original", False),
+                bg_remove=config.get("bg_remove", False),
+                bg_color=config.get("bg_color", "#00FF00"),
                 progress_callback=on_progress,
             )
 

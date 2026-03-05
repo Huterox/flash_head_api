@@ -16,6 +16,23 @@ from typing import Optional, List, Tuple
 from config import get_config
 from loguru import logger
 
+
+def hex_to_bgr(hex_color: str) -> Tuple[int, int, int]:
+    """
+    将十六进制颜色转换为 BGR 元组（OpenCV 格式）
+
+    Args:
+        hex_color: 十六进制颜色字符串，如 "#00FF00" 或 "00FF00"
+
+    Returns:
+        BGR 元组，如 (0, 255, 0)
+    """
+    hex_color = hex_color.lstrip('#')
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return (b, g, r)  # OpenCV 使用 BGR 顺序
+
 _pipeline = None
 _infer_params = None
 _pipeline_lock = threading.Lock()
@@ -187,6 +204,146 @@ def _crop_image(image_path: str, crop_region: Optional[List[int]] = None) -> Tup
     return tmp_path, image_path, [x1, y1, x2, y2]
 
 
+# ==================== 背景移除 ====================
+
+def _remove_background_from_video(
+    video_path: str,
+    audio_path: str,
+    bg_color: Tuple[int, int, int] = (0, 255, 0),
+    progress_callback=None
+) -> str:
+    """
+    对已生成的视频进行背景移除处理（替换为绿幕）
+
+    Args:
+        video_path: 视频路径（会被替换）
+        audio_path: 音频路径
+        bg_color: 背景颜色 BGR 元组，默认绿色 (0, 255, 0)
+        progress_callback: 进度回调函数
+
+    Returns:
+        处理后的视频路径（与输入相同）
+    """
+    cfg = get_config()
+    rvm_cfg = cfg.rvm
+
+    logger.info(f"[背景移除] 配置检查: enabled={rvm_cfg.enabled}, variant={rvm_cfg.variant}")
+    logger.info(f"[背景移除] 模型路径: {rvm_cfg.checkpoint}")
+    logger.info(f"[背景移除] 背景颜色: {bg_color} (BGR)")
+
+    if not rvm_cfg.enabled:
+        logger.warning("❌ RVM 未启用（config.yml 中 rvm.enabled=false），跳过背景移除")
+        return video_path
+
+    logger.info(f"[背景移除] 开始初始化 RVM 处理器...")
+    # 初始化 RVM 处理器
+    from cores.rvm_processor import RVMProcessor
+    try:
+        processor = RVMProcessor(
+            checkpoint_path=rvm_cfg.checkpoint,
+            variant=rvm_cfg.variant,
+            device=rvm_cfg.device
+        )
+        logger.info(f"[背景移除] ✅ RVM 处理器初始化成功")
+    except Exception as e:
+        logger.error(f"[背景移除] ❌ RVM 处理器初始化失败: {e}")
+        raise
+
+    # 打开原视频
+    logger.info(f"[背景移除] 打开视频文件: {video_path}")
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"无法打开视频: {video_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    logger.info(f"[背景移除] 视频信息: {frame_count} 帧, {width}x{height}, {fps} fps")
+
+    # 使用 FFmpeg 管道直接编码，避免 VideoWriter 二次压缩
+    final_output = video_path.replace('.mp4', '_bg_removed_final.mp4')
+
+    # FFmpeg 命令：从管道读取原始帧，高质量编码
+    ffmpeg_cmd = [
+        cfg.ffmpeg_path, '-y',
+        '-f', 'rawvideo',
+        '-vcodec', 'rawvideo',
+        '-s', f'{width}x{height}',
+        '-pix_fmt', 'bgr24',
+        '-r', str(fps),
+        '-i', '-',  # 从 stdin 读取
+        '-i', audio_path,
+        '-c:v', 'libx264',
+        '-preset', 'slow',  # 更慢但质量更好
+        '-crf', '18',  # 视觉无损质量（原来 23）
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '192k',  # 提高音频码率
+        '-shortest',
+        '-v', 'warning',
+        final_output
+    ]
+
+    logger.info(f"[背景移除] 启动 FFmpeg 管道编码（CRF=18, preset=slow）...")
+    proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    logger.info(f"[背景移除] 开始逐帧处理...")
+
+    # 逐帧处理并直接写入 FFmpeg 管道
+    frame_idx = 0
+    downsample_ratio = rvm_cfg.downsample_ratio
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # RVM 处理
+            processed_frame = processor.process_single_frame(
+                frame,
+                bg_color=bg_color,
+                downsample_ratio=downsample_ratio
+            )
+
+            # 直接写入 FFmpeg 管道
+            proc.stdin.write(processed_frame.tobytes())
+            frame_idx += 1
+
+            # 进度回调
+            if progress_callback and frame_idx % 5 == 0:
+                progress_callback(frame_idx, frame_count, "bg_remove", "背景移除")
+
+    finally:
+        cap.release()
+        proc.stdin.close()
+        proc.wait()
+
+    if proc.returncode != 0:
+        stderr = proc.stderr.read().decode()
+        logger.error(f"[背景移除] ❌ FFmpeg 编码失败: {stderr}")
+        raise RuntimeError(f"FFmpeg 编码失败: {stderr}")
+
+    logger.info(f"[背景移除] ✅ 逐帧处理完成，共处理 {frame_idx} 帧")
+    logger.info(f"[背景移除] ✅ FFmpeg 高质量编码完成")
+
+    # 替换原视频
+    logger.info(f"[背景移除] 替换原视频: {video_path}")
+    try:
+        os.remove(video_path)
+        os.rename(final_output, video_path)
+        logger.info(f"[背景移除] ✅ 视频替换成功")
+    except OSError as e:
+        logger.error(f"[背景移除] ❌ 替换视频失败: {e}")
+        raise
+
+    logger.info(f"[背景移除] ========== 背景移除完成 ==========")
+    logger.info(f"[背景移除] 最终输出: {video_path}")
+    return video_path
+
+
 # ==================== 贴回原图 ====================
 
 def _paste_back_video(
@@ -194,7 +351,8 @@ def _paste_back_video(
     original_image_path: str,
     crop_coords: List[int],
     audio_path: str,
-    output_path: str
+    output_path: str,
+    progress_callback=None
 ) -> str:
     """
     将生成的 512×512 大头视频逐帧贴回原图
@@ -290,6 +448,10 @@ def _paste_back_video(
         out.write(composite)
         frame_idx += 1
 
+        # 进度回调
+        if progress_callback and frame_idx % 5 == 0:
+            progress_callback(frame_idx, frame_count, "paste_back", "贴回原图")
+
     cap.release()
     out.release()
 
@@ -332,6 +494,8 @@ def _paste_back_video(
 def synthesize(image_path: str, audio_path: str, output_path: str,
                crop_region: Optional[List[int]] = None,
                restore_to_original: bool = False,
+               bg_remove: bool = False,
+               bg_color: str = "#00FF00",
                progress_callback=None) -> str:
     global _pipeline, _infer_params
     if _pipeline is None:
@@ -339,6 +503,40 @@ def synthesize(image_path: str, audio_path: str, output_path: str,
 
     from flash_head.inference import get_base_data, get_audio_embedding, run_pipeline
     cfg = get_config()
+
+    logger.info(f"========== 合成任务开始 ==========")
+    logger.info(f"参数: restore_to_original={restore_to_original}, bg_remove={bg_remove}, bg_color={bg_color}")
+    logger.info(f"输出路径: {output_path}")
+
+    # 进度分配：合成占 80%，背景移除占 20%（如果启用）
+    # 如果没有背景移除，合成占 100%
+    synthesis_weight = 0.8 if bg_remove else 1.0
+    bg_remove_weight = 0.2 if bg_remove else 0.0
+    logger.info(f"进度分配: 合成={synthesis_weight*100}%, 背景移除={bg_remove_weight*100}%")
+
+    def report_progress(current, total, stage, stage_name):
+        """统一的进度报告函数，自动计算总体进度百分比"""
+        if not progress_callback:
+            return
+
+        stage_percent = (current / total * 100) if total > 0 else 0
+
+        # 根据阶段计算总体进度
+        if stage == "inference" or stage == "paste_back":
+            # 合成阶段（包括推理和贴回原图）
+            overall_percent = stage_percent * synthesis_weight
+        elif stage == "bg_remove":
+            # 背景移除阶段
+            overall_percent = synthesis_weight * 100 + stage_percent * bg_remove_weight
+        else:
+            overall_percent = stage_percent
+
+        progress_callback(
+            current, total,
+            stage=stage,
+            stage_name=stage_name,
+            percent=round(overall_percent, 1)
+        )
 
     # 1. 裁剪图片（返回三个值：裁剪后路径、原图路径、裁剪坐标）
     crop_path, orig_path, crop_coords = _crop_image(image_path, crop_region)
@@ -405,8 +603,7 @@ def synthesize(image_path: str, audio_path: str, output_path: str,
             gen_frames = video.cpu().numpy().astype(np.uint8)
             for i in range(gen_frames.shape[0]):
                 proc.stdin.write(gen_frames[i].tobytes())
-            if progress_callback:
-                progress_callback(chunk_idx + 1, total_chunks)
+            report_progress(chunk_idx + 1, total_chunks, "inference", "视频推理")
             logger.info(f"chunk {chunk_idx+1}/{total_chunks}")
     finally:
         proc.stdin.close()
@@ -414,15 +611,41 @@ def synthesize(image_path: str, audio_path: str, output_path: str,
 
     # 7. 如果启用贴回原图，将大头视频贴回到原图
     if restore_to_original:
-        logger.info("启用贴回原图模式，开始合成")
-        _paste_back_video(temp_video_path, orig_path, crop_coords, audio_path, output_path)
+        logger.info("========== 阶段 7: 贴回原图 ==========")
+        logger.info(f"贴回原图已启用，开始处理")
+        _paste_back_video(temp_video_path, orig_path, crop_coords, audio_path, output_path, report_progress)
         # 删除临时大头视频
         try:
             os.remove(temp_video_path)
         except OSError:
             pass
+        logger.info("贴回原图完成")
+    else:
+        logger.info("========== 阶段 7: 贴回原图 ==========")
+        logger.info("贴回原图未启用，跳过")
 
-    # 8. 清理临时裁剪图
+    # 8. 如果启用背景移除，处理最终视频
+    logger.info(f"========== 阶段 8: 背景移除 ==========")
+    logger.info(f"bg_remove 参数值: {bg_remove} (类型: {type(bg_remove).__name__})")
+
+    if bg_remove:
+        logger.info(f"✅ 背景移除已启用，开始处理视频: {output_path}")
+        logger.info(f"背景颜色: {bg_color} (十六进制)")
+        # 转换十六进制颜色为 BGR 元组
+        bg_color_bgr = hex_to_bgr(bg_color)
+        logger.info(f"转换后的 BGR 颜色: {bg_color_bgr}")
+        try:
+            _remove_background_from_video(output_path, audio_path, bg_color_bgr, report_progress)
+            logger.info("✅ 背景移除处理完成")
+        except Exception as e:
+            logger.error(f"❌ 背景移除失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
+    else:
+        logger.info("❌ 背景移除未启用，跳过此阶段")
+
+    # 9. 清理临时裁剪图
     try:
         os.remove(crop_path)
     except OSError:

@@ -317,6 +317,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
                   <span>贴回原图（生成的头部视频将贴回原图尺寸，其他区域保持静止）</span>
                 </label>
               </div>
+              <div style="margin-bottom:16px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;margin-bottom:8px;">
+                  <input type="checkbox" v-model="expBgRemove" style="width:16px;height:16px;cursor:pointer;">
+                  <span>移除背景（将背景替换为绿幕，便于后期抠像）</span>
+                </label>
+                <div v-if="expBgRemove" style="display:flex;align-items:center;gap:8px;margin-left:24px;font-size:13px;color:var(--text2);">
+                  <span>背景颜色:</span>
+                  <input type="color" v-model="expBgColor" style="width:40px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:transparent;">
+                  <span style="font-family:monospace;font-size:12px;">{{ expBgColor }}</span>
+                </div>
+              </div>
               <button class="btn btn-primary" style="width:100%;" @click="expSubmit" :disabled="!expImgFileId||!expAudFileId||expBusy">
                 {{ expBusy ? '提交中...' : '提交合成任务' }}
               </button>
@@ -395,7 +406,7 @@ createApp({
     const expToast=ref(null)
     const expImgPreview=ref(null), expImgFileId=ref(null), expImgNatW=ref(0), expImgNatH=ref(0), expImgNodeId=ref(null)
     const expAudFile=ref(null), expAudFileId=ref(null), expAudNodeId=ref(null)
-    const expCanvas=ref(null), expCropRect=ref(null), expBusy=ref(false), expRestoreToOriginal=ref(false)
+    const expCanvas=ref(null), expCropRect=ref(null), expBusy=ref(false), expRestoreToOriginal=ref(false), expBgRemove=ref(false), expBgColor=ref('#00FF00')
     let expDrawing=false, expStartX=0, expStartY=0, expCanvasScale=1
 
     function expShowToast(ok,text){expToast.value={ok,text};setTimeout(()=>expToast.value=null,4000)}
@@ -456,7 +467,7 @@ createApp({
 
     async function expSubmit(){
       expBusy.value=true
-      const body={image_file_id:expImgFileId.value,audio_file_id:expAudFileId.value,node_id:expImgNodeId.value,restore_to_original:expRestoreToOriginal.value}
+      const body={image_file_id:expImgFileId.value,audio_file_id:expAudFileId.value,node_id:expImgNodeId.value,restore_to_original:expRestoreToOriginal.value,bg_remove:expBgRemove.value,bg_color:expBgColor.value}
       if(expCropRect.value&&expCropRect.value.w>10&&expCropRect.value.h>10){const r=expCropRect.value;body.crop_region=[r.x,r.y,r.x+r.w,r.y+r.h]}
       const res=await api('POST','/api/experience/synthesize',{json:body})
       expBusy.value=false
@@ -481,7 +492,7 @@ createApp({
     watch(tab,(v)=>{if(v==='tasks')loadTasks();if(v==='nodes'||v==='overview'){loadNodes();loadStats()}})
     return {token,username,password,loginErr,tab,tabs,nodes,tasks,taskTotal,tf,statusOpts,pvId,pvUrl,refreshing,
       showAddNode,addNode,addNodeErr,clusterStats,np,pagedNodes,nodeTotalPages,nodePageRange,taskPageRange,
-      expToast,expImgPreview,expImgFileId,expAudFile,expAudFileId,expCanvas,expCropRect,expBusy,expRestoreToOriginal,
+      expToast,expImgPreview,expImgFileId,expAudFile,expAudFileId,expCanvas,expCropRect,expBusy,expRestoreToOriginal,expBgRemove,expBgColor,
       doLogin,logout,loadNodes,removeNode,doAddNode,loadTasks,loadStats,togglePv,dlTask,fmtTime,sCls,sLbl,
       expSelImg,expDropImg,expRemoveImg,expDrawCanvas,expCropStart,expCropMove,expCropEnd,expClearCrop,
       expSelAud,expDropAud,expSubmit}

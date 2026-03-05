@@ -235,10 +235,19 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; back
                             <span v-if="cropRect">&nbsp;|&nbsp; 已框选区域</span>
                         </div>
                         <div style="margin-bottom:16px;">
-                            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;">
+                            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;margin-bottom:8px;">
                                 <input type="checkbox" v-model="restoreToOriginal" style="width:16px;height:16px;cursor:pointer;">
                                 <span>贴回原图（生成的头部视频将贴回原图尺寸，其他区域保持静止）</span>
                             </label>
+                            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;margin-bottom:8px;">
+                                <input type="checkbox" v-model="bgRemove" style="width:16px;height:16px;cursor:pointer;">
+                                <span>移除背景（将背景替换为绿幕，便于后期抠像）</span>
+                            </label>
+                            <div v-if="bgRemove" style="display:flex;align-items:center;gap:8px;margin-left:24px;font-size:13px;color:var(--text-dim);">
+                                <span>背景颜色:</span>
+                                <input type="color" v-model="bgColor" style="width:40px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:transparent;">
+                                <span style="font-family:monospace;font-size:12px;">{{ bgColor }}</span>
+                            </div>
                         </div>
                         <button class="btn btn-primary" style="width:100%;" @click="createTask" :disabled="!imageFileId || !audioFileId || submitting">
                             {{ submitting ? '提交中...' : '提交合成任务' }}
@@ -280,7 +289,10 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; back
                     </div>
                     <div class="task-progress" v-if="t.progress && t.status==='running'">
                         <div class="progress-track"><div class="progress-fill" :style="{width:(t.progress.percent||0)+'%'}"></div></div>
-                        <span class="progress-text">{{ t.progress.percent||0 }}% ({{ t.progress.chunk||0 }}/{{ t.progress.total||0 }})</span>
+                        <span class="progress-text">
+                            <span v-if="t.progress.stage_name">{{ t.progress.stage_name }} - </span>
+                            {{ t.progress.percent||0 }}% ({{ t.progress.chunk||0 }}/{{ t.progress.total||0 }})
+                        </span>
                     </div>
                     <div class="task-meta">
                         <span v-if="t.created_at">{{ formatTime(t.created_at) }}</span>
@@ -394,6 +406,8 @@ createApp({
         const audioFile = ref(null);
         const audioFileId = ref(null);
         const restoreToOriginal = ref(false);  // 是否贴回原图
+        const bgRemove = ref(false);  // 是否移除背景
+        const bgColor = ref('#00FF00');  // 背景颜色（默认绿色）
 
         // Canvas 框选
         const cropCanvas = ref(null);
@@ -513,7 +527,9 @@ createApp({
             const body = {
                 image_file_id: imageFileId.value,
                 audio_file_id: audioFileId.value,
-                restore_to_original: restoreToOriginal.value
+                restore_to_original: restoreToOriginal.value,
+                bg_remove: bgRemove.value,
+                bg_color: bgColor.value
             };
             if (cropRect.value && cropRect.value.w > 10 && cropRect.value.h > 10) {
                 const r = cropRect.value;
@@ -590,7 +606,7 @@ createApp({
             tab, health, sched, toast, tasks, submitting, previewId, refreshing,
             authed, inputKey, loginErr, doLogin,
             filterStatus, searchKeyword, filterOptions, taskPage, taskTotal, taskTotalPages, loadTasks,
-            imagePreview, imageFileId, imageNatW, imageNatH, audioFile, audioFileId, restoreToOriginal,
+            imagePreview, imageFileId, imageNatW, imageNatH, audioFile, audioFileId, restoreToOriginal, bgRemove, bgColor,
             cropCanvas, cropRect,
             onSelectImage, onDropImage, removeImage,
             onCropStart, onCropMove, onCropEnd, clearCrop, drawCanvas,
